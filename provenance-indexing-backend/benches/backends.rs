@@ -32,33 +32,13 @@ use provenance_indexing_backend::test_support;
 use std::hint::black_box;
 
 #[cfg(any(
-    all(feature = "sqlite", feature = "duckdb"),
-    all(feature = "sqlite", feature = "doltlite"),
-    all(feature = "sqlite", feature = "turso"),
-    all(feature = "sqlite", feature = "lbug"),
-    all(feature = "duckdb", feature = "doltlite"),
-    all(feature = "duckdb", feature = "turso"),
-    all(feature = "duckdb", feature = "lbug"),
-    all(feature = "doltlite", feature = "turso"),
-    all(feature = "doltlite", feature = "lbug"),
-    all(feature = "turso", feature = "lbug"),
+    feature = "sqlite",
+    feature = "duckdb",
+    feature = "doltlite",
+    feature = "turso",
+    feature = "lbug",
 ))]
-compile_error!("database backend features are mutually exclusive");
-
-#[cfg(feature = "sqlite")]
-type BenchmarkIndex = provenance_indexing_backend::SqliteIndex<test_support::TestModel>;
-
-#[cfg(feature = "duckdb")]
-type BenchmarkIndex = provenance_indexing_backend::DuckDbIndex<test_support::TestModel>;
-
-#[cfg(feature = "doltlite")]
-type BenchmarkIndex = provenance_indexing_backend::DoltliteIndex<test_support::TestModel>;
-
-#[cfg(feature = "turso")]
-type BenchmarkIndex = provenance_indexing_backend::TursoIndex<test_support::TestModel>;
-
-#[cfg(feature = "lbug")]
-type BenchmarkIndex = provenance_indexing_backend::LbugIndex<test_support::TestModel>;
+type BenchmarkIndex = provenance_indexing_backend::BackendIndex<test_support::TestModel>;
 
 #[cfg(any(
     feature = "sqlite",

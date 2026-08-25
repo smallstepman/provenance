@@ -1,5 +1,7 @@
 #[cfg(feature = "sqlite-index")]
-pub use provenance_indexing_backend::{SqliteIndex, SqliteIndexError};
+pub use provenance_indexing_backend::{
+    BackendIndex as SqliteIndex, BackendIndexError as SqliteIndexError,
+};
 
 #[cfg(not(feature = "sqlite-index"))]
 mod disabled {

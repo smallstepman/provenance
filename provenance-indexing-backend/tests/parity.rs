@@ -1,23 +1,4 @@
 #[cfg(any(
-    all(feature = "sqlite", feature = "duckdb"),
-    all(feature = "sqlite", feature = "doltlite"),
-    all(feature = "sqlite", feature = "turso"),
-    all(feature = "sqlite", feature = "firebird"),
-    all(feature = "sqlite", feature = "lbug"),
-    all(feature = "duckdb", feature = "doltlite"),
-    all(feature = "duckdb", feature = "turso"),
-    all(feature = "duckdb", feature = "firebird"),
-    all(feature = "duckdb", feature = "lbug"),
-    all(feature = "doltlite", feature = "turso"),
-    all(feature = "doltlite", feature = "firebird"),
-    all(feature = "doltlite", feature = "lbug"),
-    all(feature = "turso", feature = "firebird"),
-    all(feature = "turso", feature = "lbug"),
-    all(feature = "firebird", feature = "lbug"),
-))]
-compile_error!("database backend features are mutually exclusive");
-
-#[cfg(any(
     feature = "sqlite",
     feature = "duckdb",
     feature = "doltlite",
@@ -32,23 +13,7 @@ mod feature_tests {
     use provenance_indexing_backend::{state_from_operations, test_support};
     use tempfile::TempDir;
 
-    #[cfg(feature = "sqlite")]
-    type BackendIndex = provenance_indexing_backend::SqliteIndex<test_support::TestModel>;
-
-    #[cfg(feature = "duckdb")]
-    type BackendIndex = provenance_indexing_backend::DuckDbIndex<test_support::TestModel>;
-
-    #[cfg(feature = "doltlite")]
-    type BackendIndex = provenance_indexing_backend::DoltliteIndex<test_support::TestModel>;
-
-    #[cfg(feature = "turso")]
-    type BackendIndex = provenance_indexing_backend::TursoIndex<test_support::TestModel>;
-
-    #[cfg(feature = "firebird")]
-    type BackendIndex = provenance_indexing_backend::FirebirdIndex<test_support::TestModel>;
-
-    #[cfg(feature = "lbug")]
-    type BackendIndex = provenance_indexing_backend::LbugIndex<test_support::TestModel>;
+    type BackendIndex = provenance_indexing_backend::BackendIndex<test_support::TestModel>;
 
     fn firebird_tests_enabled() -> bool {
         !cfg!(feature = "firebird") || std::env::var_os("PROVENANCE_FIREBIRD_CLIENT").is_some()

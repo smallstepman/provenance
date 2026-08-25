@@ -28,3 +28,8 @@ thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"
+criterion = { version = "0.8.2", features = ["html_reports"] }
+
+[[bench]]
+name = "jj_scaling"
+harness = false

@@ -3695,6 +3695,7 @@ dependencies = [
 name = "provenance-jj"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "fs2",
  "gix",
  "jj-lib",
