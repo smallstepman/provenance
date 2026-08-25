@@ -1,20 +1,25 @@
+use jj_lib::object_id::ObjectId;
 use provenance_core::{DefaultRules, ProcessError, Service};
+use thiserror::Error;
 
 use crate::{
     JjAdapter, JjAdapterError, JjIdentity, JjModel, JjRepository, JjRuntime, JjRuntimeError,
+    jj_operation,
 };
-
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum JjIngestError {
-    Repository(crate::JjRepositoryError),
+    #[error(transparent)]
+    Repository(#[from] crate::JjRepositoryError),
+    #[error("provenance ingestion failed: {0:?}")]
     Process(ProcessError<JjAdapterError, JjRuntimeError>),
 }
 
-/// Hydrates all JJ operations from the repository root to its current operation.
+/// Hydrates JJ operations that are not already present in the provenance
+/// operation store, in root-to-current order.
 ///
-/// `observe_repository` remains a single-operation transaction constructor. This
-/// helper supplies the source-parent transactions needed when a provenance state
-/// is empty or has fallen behind the JJ operation log.
+/// Existing source anchors are skipped before adapter work. This makes repeat
+/// ingestion proportional to newly observed JJ operations rather than replaying
+/// the entire ancestry through the adapter on every invocation.
 pub fn ingest_repository(
     service: &mut Service<JjModel, JjIdentity, DefaultRules, JjAdapter, JjRuntime>,
     repository: &JjRepository,
@@ -23,6 +28,10 @@ pub fn ingest_repository(
         .operation_ancestry()
         .map_err(JjIngestError::Repository)?;
     for operation in ancestry {
+        let source = jj_operation(operation.id().hex());
+        if service.state.has_source(&source) {
+            continue;
+        }
         let snapshot = repository
             .at_operation(operation.id())
             .map_err(JjIngestError::Repository)?;

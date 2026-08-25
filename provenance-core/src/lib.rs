@@ -3199,6 +3199,49 @@ where
 }
 
 // =============================================================================
+// PROVENANCE STORE
+// =============================================================================
+/// Result of an immutable operation/head publication attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PublishOutcome {
+    /// The operation and requested heads were newly published.
+    Published,
+    /// The exact operation was already present.
+    AlreadyPresent,
+    /// The operation was published and heads were merged with a concurrent writer.
+    Merged,
+}
+
+/// Authoritative immutable provenance operation/object storage.
+///
+/// Implementations own persistence and concurrency. Indexes and projections
+/// may be rebuilt from this interface and must not replace it as authority.
+pub trait ProvenanceStore<M: Model> {
+    type Error;
+
+    fn get_operation(
+        &self,
+        id: &OperationId<M>,
+    ) -> std::result::Result<Option<Operation<M>>, Self::Error>;
+
+    fn has_operation(&self, id: &OperationId<M>) -> std::result::Result<bool, Self::Error>;
+
+    fn put_operation(&mut self, operation: &Operation<M>) -> std::result::Result<(), Self::Error>;
+
+    fn get_object(&self, id: &ObjectId<M>) -> std::result::Result<Option<Object<M>>, Self::Error>;
+
+    fn put_object(&mut self, object: &Object<M>) -> std::result::Result<(), Self::Error>;
+
+    fn heads(&self) -> std::result::Result<BTreeSet<OperationId<M>>, Self::Error>;
+
+    fn publish_heads(
+        &mut self,
+        expected: &BTreeSet<OperationId<M>>,
+        next: &BTreeSet<OperationId<M>>,
+    ) -> std::result::Result<PublishOutcome, Self::Error>;
+}
+
+// =============================================================================
 // RUNTIME
 // =============================================================================
 

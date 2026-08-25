@@ -230,15 +230,30 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
     }
 
     let mut current_commits_by_change = BTreeMap::<String, String>::new();
+    // JJ records rewritten/new commit tips in each operation. Prefer the
+    // newest operation's commit for a change; lexical ordering is only a
+    // deterministic fallback for commits without operation metadata.
+    for operation in &operations {
+        if let Some(predecessors) = operation.store_operation().commit_predecessors.as_ref() {
+            for commit_id in predecessors.keys() {
+                let commit_id = commit_id.hex();
+                if let Some(commit) = commits.get(&commit_id) {
+                    current_commits_by_change.insert(commit.change_id().reverse_hex(), commit_id);
+                }
+            }
+        }
+    }
     for (commit_id, commit) in &commits {
         if visible_commits.contains(commit_id) {
             let change_id = commit.change_id().reverse_hex();
-            let replace = current_commits_by_change
-                .get(&change_id)
-                .is_none_or(|existing| commit_id > existing);
-            if replace {
-                current_commits_by_change.insert(change_id, commit_id.clone());
-            }
+            current_commits_by_change
+                .entry(change_id)
+                .and_modify(|existing| {
+                    if commit_id > existing {
+                        *existing = commit_id.clone();
+                    }
+                })
+                .or_insert_with(|| commit_id.clone());
         }
     }
     for (commit_id, commit) in &commits {

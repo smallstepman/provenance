@@ -1,7 +1,8 @@
 use provenance_core::{EntityAddress, EntityKind, EntityRef, Namespace, Value};
+use serde::{Deserialize, Serialize};
 
 /// Primitive universe used by the Jujutsu provenance adapter.
-#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct JjModel;
 
 impl provenance_core::Model for JjModel {

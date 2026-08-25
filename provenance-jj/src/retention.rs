@@ -1,5 +1,7 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use crate::model::{COMMIT_KIND, JJ_NAMESPACE, JjModel, jj_commit_address};
 use gix::refs::transaction::PreviousValue;
 use jj_lib::backend::CommitId;
 use jj_lib::git_backend::GitBackend;
@@ -7,8 +9,6 @@ use jj_lib::object_id::ObjectId;
 use jj_lib::repo::{ReadonlyRepo, Repo};
 use provenance_core::{EntityRef, Resource, RetentionStrength, RetentionTransition};
 use thiserror::Error;
-
-use crate::model::{COMMIT_KIND, JJ_NAMESPACE, JjModel};
 
 pub const KEEP_REF_PREFIX: &str = "refs/jj-prov/keep/";
 
@@ -104,6 +104,62 @@ impl JjRetention {
             RetentionTransition::BecameUnrequired { resource, .. } => self.remove_pin(resource),
         }
     }
+    /// Reconcile Git retention refs from the authoritative kernel projection.
+    ///
+    /// This is safe to rerun after a process crash: required pins are verified
+    /// and stale provenance-owned pins are removed only when their target still
+    /// matches the commit encoded in the ref name.
+    pub fn reconcile(
+        &self,
+        requirements: impl IntoIterator<Item = (Resource<JjModel>, RetentionStrength)>,
+    ) -> Result<(), JjRetentionError> {
+        let requirements = requirements.into_iter().collect::<Vec<_>>();
+        let mut desired = BTreeSet::new();
+        for (resource, strength) in &requirements {
+            match strength {
+                RetentionStrength::Referenced => {}
+                RetentionStrength::Pinned => {
+                    let (_, name) = self.resource_target(resource)?;
+                    desired.insert(name);
+                    self.ensure_pinned(resource)?;
+                }
+                RetentionStrength::Escrowed => {
+                    return Err(JjRetentionError::UnsupportedEscrowed);
+                }
+            }
+        }
+
+        let git_repo = match self.git_repo() {
+            Ok(repo) => repo,
+            Err(JjRetentionError::UnsupportedBackend) if requirements.is_empty() => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let names = git_repo
+            .references()
+            .map_err(|error| JjRetentionError::Git(error.to_string()))?
+            .all()
+            .map_err(|error| JjRetentionError::Git(error.to_string()))?
+            .map(|reference| {
+                reference
+                    .map(|reference| reference.name().as_bstr().to_string())
+                    .map_err(|error| JjRetentionError::Git(error.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for name in names {
+            if !name.starts_with(KEEP_REF_PREFIX) || desired.contains(&name) {
+                continue;
+            }
+            let commit_id = &name[KEEP_REF_PREFIX.len()..];
+            let resource = Resource::from(EntityRef::External(jj_commit_address(commit_id)));
+            // Ignore malformed/non-commit refs under our namespace rather than
+            // risking deletion of an unrelated object.
+            if self.resource_target(&resource).is_ok() {
+                self.remove_pin(&resource)?;
+            }
+        }
+        Ok(())
+    }
 
     pub fn verify_pinned(&self, resource: &Resource<JjModel>) -> Result<(), JjRetentionError> {
         let (commit_id, name) = self.resource_target(resource)?;
@@ -164,7 +220,7 @@ impl JjRetention {
     }
 
     fn remove_pin(&self, resource: &Resource<JjModel>) -> Result<(), JjRetentionError> {
-        let (_, name) = self.resource_target(resource)?;
+        let (commit_id, name) = self.resource_target(resource)?;
         let git_repo = self.git_repo()?;
         let Some(reference) = git_repo
             .try_find_reference(&name)
@@ -172,6 +228,22 @@ impl JjRetention {
         else {
             return Ok(());
         };
+
+        let expected = gix::ObjectId::from_bytes_or_panic(commit_id.as_bytes());
+        let actual = reference
+            .try_id()
+            .ok_or_else(|| JjRetentionError::Git(format!("retention ref {name} is symbolic")))?;
+        if actual.as_ref() != expected.as_ref() {
+            return Err(JjRetentionError::RefMismatch {
+                name,
+                actual: actual.to_string(),
+                expected: expected.to_string(),
+            });
+        }
+
+        // `Reference::delete()` uses MustExistAndMatch with the target
+        // observed above, so a concurrent update fails instead of deleting
+        // another writer's retention ref.
         reference
             .delete()
             .map_err(|error| JjRetentionError::Git(error.to_string()))
