@@ -11,6 +11,10 @@ use provenance_core::{
 
 #[cfg(feature = "sqlite-index")]
 use provenance_core::QueryEngine;
+#[cfg(feature = "sqlite-index")]
+use provenance_indexing_backend::SqliteIndex;
+#[cfg(feature = "sqlite-index")]
+use provenance_jj::JjModel;
 use provenance_jj::{compile_why, external, jj_commit, why_jj_commit};
 
 #[test]
@@ -37,7 +41,7 @@ fn sqlite_index_executes_generic_why_for_jj_model() {
         .iter()
         .map(|(_, operation)| operation.clone())
         .collect::<Vec<_>>();
-    let mut index = provenance_jj::SqliteIndex::in_memory().expect("open SQLite index");
+    let mut index = SqliteIndex::<JjModel>::in_memory().expect("open SQLite index");
     index.rebuild(&operations).expect("rebuild SQLite index");
 
     let result = index

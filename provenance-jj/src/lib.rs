@@ -8,7 +8,6 @@ mod adapter;
 mod authoritative;
 mod codec;
 mod identity;
-mod index;
 mod ingest;
 mod model;
 mod query;
@@ -22,7 +21,6 @@ pub use adapter::{
 };
 pub use authoritative::{DirectoryProvenanceStore, DirectoryStoreError};
 pub use identity::{JjIdentity, observation_seed};
-pub use index::{SqliteIndex, SqliteIndexError};
 pub use ingest::{JjIngestError, ingest_repository};
 pub use model::{
     CHANGE_KIND, COMMIT_KIND, JJ_NAMESPACE, JjModel, OPERATION_KIND, WORKSPACE_KIND, external,

@@ -7,9 +7,6 @@ use provenance_data_model::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-// ADAPTER
-// =============================================================================
-
 /// Pure plugin/integration boundary.
 ///
 /// JJ adapter, issue adapter, docs adapter, agent adapter, etc. implement this.
@@ -50,9 +47,6 @@ where
 {
 }
 
-// =============================================================================
-// PROVENANCE STORE
-// =============================================================================
 /// Result of an immutable operation/head publication attempt.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PublishOutcome {
@@ -86,10 +80,6 @@ pub trait ProvenanceStore<M: Model> {
     ) -> std::result::Result<PublishOutcome, Self::Error>;
 }
 
-// =============================================================================
-// RUNTIME
-// =============================================================================
-
 /// Effectful implementation contract.
 ///
 /// This may be implemented by:
@@ -112,10 +102,6 @@ pub trait Runtime<M: Model> {
     /// Idempotent post-publication reconciliation.
     fn finalize(&mut self, action: &FinalizeAction<M>) -> std::result::Result<(), Self::Error>;
 }
-
-// =============================================================================
-// SERVICE
-// =============================================================================
 
 pub struct Service<M, I, R, A, RT>
 where
@@ -159,42 +145,22 @@ where
         if plan.idempotent {
             return Ok(());
         }
-
-        // ---------------------------------------------------------------------
-        // PREPARE
-        //
         // State must NOT advance if this fails.
-        // ---------------------------------------------------------------------
-
         for requirement in &plan.prepare {
             self.runtime
                 .prepare(requirement)
                 .map_err(ProcessError::Prepare)?;
         }
 
-        // ---------------------------------------------------------------------
-        // PUBLISH
-        //
         // This is the commit point.
-        // ---------------------------------------------------------------------
-
         self.runtime
             .publish(&plan.operation)
             .map_err(ProcessError::Publish)?;
 
-        // ---------------------------------------------------------------------
         // Operation is authoritative from HERE onward.
-        // ---------------------------------------------------------------------
-
         self.state = plan.next_state;
-        // ---------------------------------------------------------------------
-        // FINALIZE
-        //
-        // Failure does NOT roll back state.
-        //
-        // Reconciliation should retry these operations later.
-        // ---------------------------------------------------------------------
 
+        // Failure does NOT roll back state. Reconciliation should retry these operations later.
         for action in &plan.finalize {
             self.runtime
                 .finalize(action)
@@ -204,5 +170,3 @@ where
         Ok(())
     }
 }
-
-// =============================================================================

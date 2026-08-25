@@ -4,6 +4,8 @@ use provenance_core::{
     Attributes, EventIntent, Intent, Operation, OperationId, ProvenanceStore, Resource,
     ResourceRequirement, RetentionStrength, Runtime, Transaction,
 };
+#[cfg(feature = "sqlite-index")]
+use provenance_indexing_backend::SqliteIndex;
 use provenance_jj::{DirectoryProvenanceStore, JjRuntime, JjRuntimeError, jj_commit, open_service};
 use std::collections::BTreeSet;
 use std::thread;
@@ -223,7 +225,7 @@ fn authoritative_reload_does_not_require_sqlite_index() {
     drop(service);
 
     let index_path = fixture.dir.path().join(".jj").join("query-index.sqlite");
-    let mut index = provenance_jj::SqliteIndex::open(&index_path).expect("open index");
+    let mut index = SqliteIndex::<provenance_jj::JjModel>::open(&index_path).expect("open index");
     let runtime = JjRuntime::open(repository.repo().clone(), &store_path).expect("reopen runtime");
     let operations = runtime
         .load_state()
