@@ -1,7 +1,30 @@
-#[cfg(all(feature = "sqlite", feature = "duckdb"))]
-compile_error!("features `sqlite` and `duckdb` are mutually exclusive");
+#[cfg(any(
+    all(feature = "sqlite", feature = "duckdb"),
+    all(feature = "sqlite", feature = "doltlite"),
+    all(feature = "sqlite", feature = "turso"),
+    all(feature = "sqlite", feature = "firebird"),
+    all(feature = "sqlite", feature = "lbug"),
+    all(feature = "duckdb", feature = "doltlite"),
+    all(feature = "duckdb", feature = "turso"),
+    all(feature = "duckdb", feature = "firebird"),
+    all(feature = "duckdb", feature = "lbug"),
+    all(feature = "doltlite", feature = "turso"),
+    all(feature = "doltlite", feature = "firebird"),
+    all(feature = "doltlite", feature = "lbug"),
+    all(feature = "turso", feature = "firebird"),
+    all(feature = "turso", feature = "lbug"),
+    all(feature = "firebird", feature = "lbug"),
+))]
+compile_error!("database backend features are mutually exclusive");
 
-#[cfg(any(feature = "sqlite", feature = "duckdb"))]
+#[cfg(any(
+    feature = "sqlite",
+    feature = "duckdb",
+    feature = "doltlite",
+    feature = "turso",
+    feature = "firebird",
+    feature = "lbug",
+))]
 mod feature_tests {
     use std::path::Path;
 
@@ -15,12 +38,38 @@ mod feature_tests {
     #[cfg(feature = "duckdb")]
     type BackendIndex = provenance_indexing_backend::DuckDbIndex<test_support::TestModel>;
 
-    fn in_memory() -> BackendIndex {
-        BackendIndex::in_memory().expect("open in-memory projection index")
+    #[cfg(feature = "doltlite")]
+    type BackendIndex = provenance_indexing_backend::DoltliteIndex<test_support::TestModel>;
+
+    #[cfg(feature = "turso")]
+    type BackendIndex = provenance_indexing_backend::TursoIndex<test_support::TestModel>;
+
+    #[cfg(feature = "firebird")]
+    type BackendIndex = provenance_indexing_backend::FirebirdIndex<test_support::TestModel>;
+
+    #[cfg(feature = "lbug")]
+    type BackendIndex = provenance_indexing_backend::LbugIndex<test_support::TestModel>;
+
+    fn firebird_tests_enabled() -> bool {
+        !cfg!(feature = "firebird") || std::env::var_os("PROVENANCE_FIREBIRD_CLIENT").is_some()
     }
 
-    fn open(path: impl AsRef<Path>) -> BackendIndex {
-        BackendIndex::open(path).expect("open file projection index")
+    fn in_memory() -> Option<BackendIndex> {
+        if !firebird_tests_enabled() {
+            eprintln!("skipping Firebird parity test; set PROVENANCE_FIREBIRD_CLIENT to run it");
+            return None;
+        }
+        Some(BackendIndex::in_memory().expect("open in-memory projection index"))
+    }
+
+    fn open(path: impl AsRef<Path>) -> Option<BackendIndex> {
+        if !firebird_tests_enabled() {
+            eprintln!(
+                "skipping Firebird persistence test; set PROVENANCE_FIREBIRD_CLIENT to run it"
+            );
+            return None;
+        }
+        Some(BackendIndex::open(path).expect("open file projection index"))
     }
 
     #[test]
@@ -33,7 +82,9 @@ mod feature_tests {
             test_support::traverse_query(),
         ];
 
-        let mut index = in_memory();
+        let Some(mut index) = in_memory() else {
+            return;
+        };
         index
             .rebuild(&operations)
             .expect("rebuild projection index");
@@ -49,18 +100,30 @@ mod feature_tests {
         let directory = TempDir::new().expect("create temporary directory");
         let filename = if cfg!(feature = "sqlite") {
             "projection.sqlite"
-        } else {
+        } else if cfg!(feature = "duckdb") {
             "projection.duckdb"
+        } else if cfg!(feature = "doltlite") {
+            "projection.dolt"
+        } else if cfg!(feature = "turso") {
+            "projection.turso"
+        } else if cfg!(feature = "firebird") {
+            "projection.fdb"
+        } else {
+            "projection.lbug"
         };
         let path = directory.path().join(filename);
         let operations = vec![test_support::operation_with_nodes(4)];
 
-        let mut index = open(&path);
+        let Some(mut index) = open(&path) else {
+            return;
+        };
         index.rebuild(&operations).expect("rebuild projection file");
         assert_eq!(index.operation_count().expect("operation count"), 1);
         drop(index);
 
-        let index = open(&path);
+        let Some(index) = open(&path) else {
+            return;
+        };
         let result = index
             .execute(&test_support::explain_query())
             .expect("query reloaded projection file");

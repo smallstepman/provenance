@@ -7,23 +7,32 @@ edition = "2024"
 default = []
 sqlite = ["dep:rusqlite", "test-support"]
 duckdb = ["dep:duckdb", "test-support"]
-test-support = []
+doltlite = ["dep:doltlite", "test-support"]
+turso = ["dep:turso", "dep:pollster", "test-support"]
+firebird = ["dep:rsfbclient", "test-support"]
+lbug = ["dep:lbug", "test-support"]
+test-support = ["dep:tempfile"]
 
 [lib]
 name = "provenance_indexing_backend"
 path = "src/lib.rs"
 
 [dependencies]
+doltlite = { package = "rusqdoltlite", version = "0.40.17", features = ["bundled"], optional = true }
 duckdb = { version = "1.10505.0", features = ["bundled"], optional = true }
+lbug = { version = "0.19.1", optional = true }
+pollster = { version = "0.4", optional = true }
 postcard = { version = "1.1", features = ["alloc"] }
 provenance-core = { path = "../provenance-core" }
+rsfbclient = { version = "0.28.0", default-features = false, features = ["dynamic_loading"], optional = true }
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 serde = { version = "1", features = ["derive"] }
+tempfile = { version = "3", optional = true }
 thiserror = "2"
+turso = { version = "0.8.0-pre.7", default-features = false, optional = true }
 
 [dev-dependencies]
 criterion = "0.8.2"
-tempfile = "3"
 
 [[bench]]
 name = "backends"

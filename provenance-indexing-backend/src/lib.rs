@@ -19,8 +19,24 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
-#[cfg(all(feature = "sqlite", feature = "duckdb"))]
-compile_error!("features `sqlite` and `duckdb` are mutually exclusive");
+#[cfg(any(
+    all(feature = "sqlite", feature = "duckdb"),
+    all(feature = "sqlite", feature = "doltlite"),
+    all(feature = "sqlite", feature = "turso"),
+    all(feature = "sqlite", feature = "firebird"),
+    all(feature = "sqlite", feature = "lbug"),
+    all(feature = "duckdb", feature = "doltlite"),
+    all(feature = "duckdb", feature = "turso"),
+    all(feature = "duckdb", feature = "firebird"),
+    all(feature = "duckdb", feature = "lbug"),
+    all(feature = "doltlite", feature = "turso"),
+    all(feature = "doltlite", feature = "firebird"),
+    all(feature = "doltlite", feature = "lbug"),
+    all(feature = "turso", feature = "firebird"),
+    all(feature = "turso", feature = "lbug"),
+    all(feature = "firebird", feature = "lbug"),
+))]
+compile_error!("database backend features are mutually exclusive");
 
 pub mod implementation;
 
@@ -33,6 +49,22 @@ pub use implementation::sqlite::{
 pub use implementation::duckdb::{
     DuckDbIndex, DuckDbIndexError, DuckDbStorage, DuckDbStorageError,
 };
+
+#[cfg(feature = "doltlite")]
+pub use implementation::doltlite::{
+    DoltliteIndex, DoltliteIndexError, DoltliteStorage, DoltliteStorageError,
+};
+
+#[cfg(feature = "turso")]
+pub use implementation::turso::{TursoIndex, TursoIndexError, TursoStorage, TursoStorageError};
+
+#[cfg(feature = "firebird")]
+pub use implementation::firebird::{
+    FirebirdIndex, FirebirdIndexError, FirebirdStorage, FirebirdStorageError,
+};
+
+#[cfg(feature = "lbug")]
+pub use implementation::lbug::{LbugIndex, LbugIndexError, LbugStorage, LbugStorageError};
 
 /// Models supported by a serialized projection storage boundary.
 ///

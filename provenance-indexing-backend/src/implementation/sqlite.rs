@@ -4,12 +4,16 @@ use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
+use db::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+#[cfg(feature = "doltlite")]
+use doltlite as db;
 use postcard::Error as PostcardError;
 use provenance_core::{
     EntityObservation, EntityRef, EventId, Fact, GraphEdge, Model, Operation, OperationId,
     SchemaDefinition, SchemaKey, State,
 };
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+#[cfg(feature = "sqlite")]
+use rusqlite as db;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use thiserror::Error;
@@ -87,7 +91,7 @@ CREATE INDEX IF NOT EXISTS event_entity_entity_idx ON event_entity_index(entity_
 #[derive(Debug, Error)]
 pub enum SqliteStorageError {
     #[error("SQLite projection storage error: {0}")]
-    Sql(#[from] rusqlite::Error),
+    Sql(#[from] db::Error),
     #[error("could not create SQLite projection directory: {0}")]
     Io(#[from] std::io::Error),
     #[error("could not encode indexed value: {0}")]
@@ -253,10 +257,10 @@ where
                 .query_map(params![entity_key, entity_key], |row| {
                     row.get::<_, Vec<u8>>(0)
                 })?
-                .collect::<rusqlite::Result<Vec<_>>>()?,
+                .collect::<db::Result<Vec<_>>>()?,
             _ => statement
                 .query_map(params![entity_key], |row| row.get::<_, Vec<u8>>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?,
+                .collect::<db::Result<Vec<_>>>()?,
         };
         blobs.iter().map(|blob| decode(blob)).collect()
     }
