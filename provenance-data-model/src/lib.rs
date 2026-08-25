@@ -1,44 +1,12 @@
-//! provenance-data-model
+//! Storage-agnostic provenance data model.
 //!
-//! Pure, storage-agnostic provenance vocabulary.
-//!
-//! This crate represents:
-//!
-//!   - entities
-//!   - activities
-//!   - agents
-//!   - assertions
-//!   - semantic relationships
-//!   - temporal validity
-//!   - schemas
-//!   - provenance bundles
-//!
-//! It deliberately does NOT contain:
-//!
-//!   - persistence
-//!   - transactions
-//!   - locks
-//!   - guards
-//!   - publication
-//!   - retention / pinning / escrow
-//!   - query execution
-//!   - plugin loading
-//!   - WIT / WASM
-//!   - filesystem concepts
-//!   - database concepts
-//!   - JJ / Git concepts
-//!
-//! Domain concepts such as:
-//!
-//!   jj:commit
-//!   tracker:task
-//!   docs:rfc
-//!   semantic:customer
-//!   technical:column
-//!   agent:run
-//!
-//! are schema-defined kinds, not Rust enums in this crate.
+//! This crate owns the typed vocabulary shared by provenance adapters and the
+//! provenance kernel: identities, structured values, external addresses,
+//! schemas, observations, relations, and portable graph records. It does not
+//! own transactions, publication, retention effects, query execution, or
+//! persistence.
 
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Debug,
@@ -46,39 +14,42 @@ use std::{
 };
 
 // =============================================================================
-// FOUNDATIONS
+// MODEL
 // =============================================================================
 
 pub trait Key: Clone + Debug + Eq + Ord + Send + Sync + 'static {}
 
 impl<T> Key for T where T: Clone + Debug + Eq + Ord + Send + Sync + 'static {}
 
-/// Consumer-chosen scalar identity types.
+/// Consumer-supplied primitive universe.
 ///
-/// The data model imposes no generation or persistence semantics.
-pub trait Model: Send + Sync + 'static {
-    /// Internal provenance identity representation.
+/// Typed graph containers are deterministically ordered, so the model marker
+/// itself carries the same bounds as the kernel's `Key` universe.
+pub trait Model: Key {
+    /// Raw internal provenance ID.
     type Id: Key;
 
-    /// Identity local to an external namespace.
+    /// Deterministic seed used for internal identity derivation.
+    type Seed: Key;
+
+    /// ID component belonging to an external system.
     ///
-    /// Examples:
-    ///
-    ///   "abc123"
-    ///   "PROJ-42"
-    ///   "0001"
-    ///   "customer-182"
-    ///
+    /// Namespace and kind are owned by the kernel's EntityAddress.
     type ExternalId: Key;
+
+    /// Opaque immutable evidence payload.
+    ///
+    /// Typed SDLC entities should normally use Attributes instead.
+    type Payload: Clone + Debug + PartialEq + Send + Sync + 'static;
 }
 
 // =============================================================================
-// SYMBOL TYPES
+// SMALL VALUE TYPES
 // =============================================================================
 
-macro_rules! symbol {
+macro_rules! text_newtype {
     ($name:ident) => {
-        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
         pub struct $name(pub Box<str>);
 
         impl $name {
@@ -105,18 +76,23 @@ macro_rules! symbol {
     };
 }
 
-symbol!(Namespace);
-symbol!(Kind);
-symbol!(Predicate);
-symbol!(FieldName);
-symbol!(SchemaVersion);
-symbol!(VocabularyName);
+text_newtype!(Namespace);
+text_newtype!(EntityKind);
+text_newtype!(RelationName);
+text_newtype!(FieldName);
+text_newtype!(SchemaVersion);
+text_newtype!(QueryName);
+
+// Compatibility aliases for the vocabulary-oriented API.
+pub type Kind = EntityKind;
+pub type Predicate = RelationName;
+text_newtype!(VocabularyName);
 
 // =============================================================================
-// TYPED INTERNAL IDS
+// STRONGLY TYPED INTERNAL IDS
 // =============================================================================
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Id<R, T> {
     raw: R,
     _tag: PhantomData<fn() -> T>,
@@ -148,538 +124,255 @@ impl<R, T> Id<R, T> {
     }
 }
 
-pub enum EntityTag {}
-pub enum ActivityTag {}
-pub enum AgentTag {}
-pub enum AssertionTag {}
-pub enum BundleTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum OperationTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum EventTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum SessionTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum ActorTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum ObjectTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum ClaimTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum ReplicaTag {}
 
-pub type EntityId<M> = Id<<M as Model>::Id, EntityTag>;
-
-pub type ActivityId<M> = Id<<M as Model>::Id, ActivityTag>;
-
-pub type AgentId<M> = Id<<M as Model>::Id, AgentTag>;
-
-pub type AssertionId<M> = Id<<M as Model>::Id, AssertionTag>;
-
-pub type BundleId<M> = Id<<M as Model>::Id, BundleTag>;
+pub type OperationId<M> = Id<<M as Model>::Id, OperationTag>;
+pub type EventId<M> = Id<<M as Model>::Id, EventTag>;
+pub type SessionId<M> = Id<<M as Model>::Id, SessionTag>;
+pub type ActorId<M> = Id<<M as Model>::Id, ActorTag>;
+pub type ObjectId<M> = Id<<M as Model>::Id, ObjectTag>;
+pub type ClaimId<M> = Id<<M as Model>::Id, ClaimTag>;
+pub type ReplicaId<M> = Id<<M as Model>::Id, ReplicaTag>;
 
 // =============================================================================
-// EXTERNAL ADDRESSING
+// IDENTITY DERIVATION
 // =============================================================================
 
-/// Structured identity from some external semantic universe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IdentityKind {
+    Operation,
+    Event,
+    Session,
+    Actor,
+    Object,
+    Claim,
+    Replica,
+}
+
+/// Only one primitive must be implemented by a provenance model.
+pub trait IdentityScheme<M: Model>: Send + Sync {
+    fn derive(&self, kind: IdentityKind, seed: &M::Seed, discriminator: &str) -> M::Id;
+
+    fn operation(&self, seed: &M::Seed) -> OperationId<M> {
+        OperationId::<M>::new(self.derive(IdentityKind::Operation, seed, "operation"))
+    }
+
+    fn event(&self, seed: &M::Seed, index: usize) -> EventId<M> {
+        EventId::<M>::new(self.derive(IdentityKind::Event, seed, &format!("event:{index}")))
+    }
+
+    fn session(&self, seed: &M::Seed) -> SessionId<M> {
+        SessionId::<M>::new(self.derive(IdentityKind::Session, seed, "session"))
+    }
+
+    fn actor(&self, seed: &M::Seed) -> ActorId<M> {
+        ActorId::<M>::new(self.derive(IdentityKind::Actor, seed, "actor"))
+    }
+
+    fn object(&self, seed: &M::Seed, index: usize) -> ObjectId<M> {
+        ObjectId::<M>::new(self.derive(IdentityKind::Object, seed, &format!("object:{index}")))
+    }
+
+    fn claim(&self, seed: &M::Seed, event_index: usize, requirement_index: usize) -> ClaimId<M> {
+        ClaimId::<M>::new(self.derive(
+            IdentityKind::Claim,
+            seed,
+            &format!("claim:{event_index}:{requirement_index}"),
+        ))
+    }
+
+    fn replica(&self, seed: &M::Seed) -> ReplicaId<M> {
+        ReplicaId::<M>::new(self.derive(IdentityKind::Replica, seed, "replica"))
+    }
+}
+
+// =============================================================================
+// EXTERNAL ENTITY ADDRESSING
+// =============================================================================
+
+/// Canonical structured external identity.
 ///
-/// Examples, rendered elsewhere:
+/// ```text
+/// jj://commit/abc
+/// tracker://task/PROJ-42
+/// docs://rfc/0001
+/// ```
+/// belongs outside the kernel.
 ///
-///   jj://commit/abc123
-///   tracker://task/PROJ-42
-///   docs://rfc/0001
-///   agent://run/019...
-///   semantic://customer/customer-182
-///   technical://column/customer.f_name
-///
-/// URI parsing/rendering does not belong in this crate.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ExternalRef<M: Model> {
+/// Internally we never need to parse strings.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct EntityAddress<M: Model> {
     pub namespace: Namespace,
-    pub kind: Kind,
+    pub kind: EntityKind,
     pub id: M::ExternalId,
 }
 
-impl<M: Model> ExternalRef<M> {
-    pub fn new(namespace: impl Into<Namespace>, kind: impl Into<Kind>, id: M::ExternalId) -> Self {
+impl<M: Model> EntityAddress<M> {
+    pub fn new(
+        namespace: impl Into<Namespace>,
+        kind: impl Into<EntityKind>,
+        id: M::ExternalId,
+    ) -> Self {
         Self {
             namespace: namespace.into(),
-
             kind: kind.into(),
-
             id,
         }
     }
 
-    pub fn ty(&self) -> ExternalType {
-        ExternalType {
+    pub fn entity_type(&self) -> EntityType {
+        EntityType {
             namespace: self.namespace.clone(),
-
             kind: self.kind.clone(),
         }
     }
+
+    pub fn ty(&self) -> EntityType {
+        self.entity_type()
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ExternalType {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct EntityType {
     pub namespace: Namespace,
-    pub kind: Kind,
+    pub kind: EntityKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum InternalEntityKind {
+    Operation,
+    Event,
+    Session,
+    Actor,
+    Object,
+    Replica,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum EntityTypePattern {
+    Internal(InternalEntityKind),
+    External(EntityType),
+    Any,
 }
 
 // =============================================================================
-// UNIVERSAL NODE REFERENCES
+// ENTITY REFERENCES
 // =============================================================================
 
-/// Anything that may participate in a provenance relationship.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum NodeRef<M: Model> {
-    Entity(EntityId<M>),
-    Activity(ActivityId<M>),
-    Agent(AgentId<M>),
-
-    /// Identity whose authoritative namespace exists elsewhere.
-    External(ExternalRef<M>),
-
-    /// Assertions are first-class provenance artifacts and may themselves be
-    /// supported, contradicted, superseded, invalidated, etc.
-    Assertion(AssertionId<M>),
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub enum InternalEntityRef<M: Model> {
+    Operation(OperationId<M>),
+    Event(EventId<M>),
+    Session(SessionId<M>),
+    Actor(ActorId<M>),
+    Object(ObjectId<M>),
+    Replica(ReplicaId<M>),
 }
 
-impl<M: Model> NodeRef<M> {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub enum EntityRef<M: Model> {
+    Internal(InternalEntityRef<M>),
+    External(EntityAddress<M>),
+}
+
+impl<M: Model> EntityRef<M> {
+    pub fn type_pattern(&self) -> EntityTypePattern {
+        match self {
+            Self::External(address) => EntityTypePattern::External(address.entity_type()),
+            Self::Internal(internal) => {
+                let kind = match internal {
+                    InternalEntityRef::Operation(_) => InternalEntityKind::Operation,
+                    InternalEntityRef::Event(_) => InternalEntityKind::Event,
+                    InternalEntityRef::Session(_) => InternalEntityKind::Session,
+                    InternalEntityRef::Actor(_) => InternalEntityKind::Actor,
+                    InternalEntityRef::Object(_) => InternalEntityKind::Object,
+                    InternalEntityRef::Replica(_) => InternalEntityKind::Replica,
+                };
+                EntityTypePattern::Internal(kind)
+            }
+        }
+    }
+
     pub fn external(
         namespace: impl Into<Namespace>,
-        kind: impl Into<Kind>,
+        kind: impl Into<EntityKind>,
         id: M::ExternalId,
     ) -> Self {
-        Self::External(ExternalRef::new(namespace, kind, id))
+        Self::External(EntityAddress::new(namespace, kind, id))
     }
 }
 
 // =============================================================================
-// STRUCTURED VALUES
+// STRICT STRUCTURED VALUES
 // =============================================================================
 
-/// Strict structured values without requiring JSON.
-///
-/// Plugin/WIT DTOs can translate to/from this type.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// Kernel-compatible structured values. `Ref` is retained for the portable
+/// vocabulary API; `Entity` is the operation/query representation.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
 pub enum Value<M: Model> {
     Null,
     Bool(bool),
     Integer(i128),
-
-    /// Decimal is textual so this crate does not impose a decimal implementation.
     Decimal(Box<str>),
-
     String(Box<str>),
     Bytes(Vec<u8>),
-
+    Entity(EntityRef<M>),
     Ref(NodeRef<M>),
-
     List(Vec<Value<M>>),
-
     Map(BTreeMap<FieldName, Value<M>>),
 }
 
 pub type Attributes<M> = BTreeMap<FieldName, Value<M>>;
 
 // =============================================================================
-// ENTITY
+// SCHEMAS
 // =============================================================================
 
-/// A thing that exists or existed.
-///
-/// Examples:
-///
-///   commit
-///   change
-///   issue
-///   RFC
-///   document
-///   customer
-///   table
-///   column
-///   dataset
-///   binary
-///   deployment
-///   model response
-///   derived fact
-///
-/// Domain-specific kinds are provided through schemas.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Entity<M: Model> {
-    pub id: EntityId<M>,
-
-    pub kind: Kind,
-
-    /// Optional identity in an external universe.
-    pub external: Option<ExternalRef<M>>,
-
-    pub attributes: Attributes<M>,
-}
-
-impl<M: Model> Entity<M> {
-    pub fn reference(&self) -> NodeRef<M> {
-        NodeRef::Entity(self.id.clone())
-    }
-}
-
-// =============================================================================
-// AGENT
-// =============================================================================
-
-/// Something to which responsibility or agency may be attributed.
-///
-/// Examples:
-///
-///   human
-///   LLM agent
-///   CI service
-///   workflow engine
-///   bot
-///   organization
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Agent<M: Model> {
-    pub id: AgentId<M>,
-
-    pub kind: Kind,
-
-    pub external: Option<ExternalRef<M>>,
-
-    pub attributes: Attributes<M>,
-}
-
-impl<M: Model> Agent<M> {
-    pub fn reference(&self) -> NodeRef<M> {
-        NodeRef::Agent(self.id.clone())
-    }
-}
-
-// =============================================================================
-// ACTIVITY
-// =============================================================================
-
-/// Something that happened.
-///
-/// Examples:
-///
-///   JJ operation
-///   agent run
-///   human editing session
-///   tool invocation
-///   inference
-///   database query
-///   compilation
-///   CI run
-///   deployment
-///   issue transition
-///   extraction pipeline
-///
-/// Inputs, outputs, ownership and causality are represented through assertions,
-/// rather than duplicated structurally here.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Activity<M: Model> {
-    pub id: ActivityId<M>,
-
-    pub kind: Kind,
-
-    pub external: Option<ExternalRef<M>>,
-
-    pub attributes: Attributes<M>,
-}
-
-impl<M: Model> Activity<M> {
-    pub fn reference(&self) -> NodeRef<M> {
-        NodeRef::Activity(self.id.clone())
-    }
-}
-
-// =============================================================================
-// RELATION TYPES
-// =============================================================================
-
-/// A semantic predicate.
-///
-/// Examples:
-///
-///   prov:used
-///   prov:generated-by
-///   jj:belongs-to-change
-///   tracker:blocked-by
-///   docs:supersedes
-///   semantic:represented-by
-///   agent:selected-source
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RelationType {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SchemaKey {
     pub namespace: Namespace,
-
-    pub predicate: Predicate,
-}
-
-impl RelationType {
-    pub fn new(namespace: impl Into<Namespace>, predicate: impl Into<Predicate>) -> Self {
-        Self {
-            namespace: namespace.into(),
-
-            predicate: predicate.into(),
-        }
-    }
-}
-
-// =============================================================================
-// CORE VOCABULARY
-// =============================================================================
-
-/// Optional conventional provenance vocabulary.
-///
-/// These are convenience names only.
-///
-/// Schemas and plugins remain free to introduce arbitrary relation types.
-pub mod core_predicates {
-    pub const USED: &str = "used";
-
-    pub const GENERATED_BY: &str = "generated-by";
-
-    pub const DERIVED_FROM: &str = "derived-from";
-
-    pub const ASSOCIATED_WITH: &str = "associated-with";
-
-    pub const ATTRIBUTED_TO: &str = "attributed-to";
-
-    pub const INFORMED_BY: &str = "informed-by";
-
-    pub const SUPPORTS: &str = "supports";
-
-    pub const CONTRADICTS: &str = "contradicts";
-
-    pub const INVALIDATES: &str = "invalidates";
-
-    pub const SUPERSEDES: &str = "supersedes";
-
-    pub const MERGED_INTO: &str = "merged-into";
-
-    pub const INFLUENCED_BY: &str = "influenced-by";
-
-    pub const REPRESENTED_BY: &str = "represented-by";
-
-    pub const SELECTED: &str = "selected";
-
-    pub const CONSIDERED: &str = "considered";
-
-    pub const PRODUCED: &str = "produced";
-}
-
-// =============================================================================
-// ASSERTION
-// =============================================================================
-
-/// A first-class claim about a relationship.
-///
-/// This is one of the most important choices in the model.
-///
-/// Instead of treating:
-///
-///     commit C --implements--> task T
-///
-/// as an anonymous graph edge, it becomes an identifiable provenance artifact.
-///
-/// That assertion can itself have provenance:
-///
-///     assertion A
-///         generated-by
-///     agent run R
-///
-/// and can later be:
-///
-///     supported
-///     contradicted
-///     superseded
-///     invalidated
-///
-/// This is especially important for LLM-generated/synthesized knowledge.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Assertion<M: Model> {
-    pub id: AssertionId<M>,
-
-    pub subject: NodeRef<M>,
-
-    pub predicate: RelationType,
-
-    pub object: NodeRef<M>,
-
-    /// Optional activity that produced this assertion.
-    ///
-    /// This is a convenience field representing the extremely common
-    /// "assertion generated by activity" relationship.
-    ///
-    /// Consumers may alternatively model this purely through assertions.
-    pub generated_by: Option<ActivityId<M>>,
-
-    pub validity: Validity<M>,
-
-    pub attributes: Attributes<M>,
-}
-
-impl<M: Model> Assertion<M> {
-    pub fn new(
-        id: AssertionId<M>,
-        subject: NodeRef<M>,
-        predicate: RelationType,
-        object: NodeRef<M>,
-    ) -> Self {
-        Self {
-            id,
-            subject,
-            predicate,
-            object,
-
-            generated_by: None,
-
-            validity: Validity::Unspecified,
-
-            attributes: BTreeMap::new(),
-        }
-    }
-
-    pub fn reference(&self) -> NodeRef<M> {
-        NodeRef::Assertion(self.id.clone())
-    }
-
-    pub fn generated_by(mut self, activity: ActivityId<M>) -> Self {
-        self.generated_by = Some(activity);
-
-        self
-    }
-
-    pub fn with_validity(mut self, validity: Validity<M>) -> Self {
-        self.validity = validity;
-
-        self
-    }
-
-    pub fn with_attribute(mut self, field: impl Into<FieldName>, value: Value<M>) -> Self {
-        self.attributes.insert(field.into(), value);
-
-        self
-    }
-}
-
-// =============================================================================
-// TEMPORAL / VALIDITY REPRESENTATION
-// =============================================================================
-
-/// Historical validity of an assertion.
-///
-/// This type REPRESENTS temporal semantics.
-///
-/// It does not enforce them.
-///
-/// Old assertions are never required to disappear merely because later
-/// assertions supersede or invalidate them.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Validity<M: Model> {
-    /// No validity information was supplied.
-    Unspecified,
-
-    /// Assertion is represented as currently active.
-    Active,
-
-    /// Another assertion superseded this one.
-    Superseded { by: AssertionId<M> },
-
-    /// Another assertion explicitly invalidated this one.
-    Invalidated { by: AssertionId<M> },
-
-    /// Logical interval using provenance bundle boundaries.
-    ///
-    /// This avoids requiring wall-clock timestamps in the foundational model.
-    Interval {
-        from: BundleId<M>,
-
-        until: Option<BundleId<M>>,
-    },
-}
-
-// =============================================================================
-// EXPLANATION SEMANTICS
-// =============================================================================
-
-/// Optional meaning for explanation-oriented consumers such as `why`.
-///
-/// This is schema metadata, not query behavior.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ExplanationRole {
-    /// Direct causal dependency.
-    Causal,
-
-    /// Evidence supporting a claim.
-    Supporting,
-
-    /// Evidence opposing a claim.
-    Contradicting,
-
-    /// Relation describing invalidation.
-    Invalidating,
-
-    /// Responsibility/ownership.
-    Attribution,
-
-    /// Influential but weaker than direct causality.
-    Influence,
-
-    /// Context useful to explanation but not itself causal.
-    Contextual,
-}
-
-/// Defines which endpoint is explained by the other.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ExplanationDirection {
-    SubjectExplainedByObject,
-    ObjectExplainedBySubject,
-    Symmetric,
-}
-
-// =============================================================================
-// SCHEMA TYPES
-// =============================================================================
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SchemaId {
-    pub namespace: Namespace,
-
     pub version: SchemaVersion,
 }
 
-impl SchemaId {
+impl SchemaKey {
     pub fn new(namespace: impl Into<Namespace>, version: impl Into<SchemaVersion>) -> Self {
         Self {
             namespace: namespace.into(),
-
             version: version.into(),
         }
     }
 }
 
-/// Type-pattern for references appearing in schemas.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NodeType {
-    Entity {
-        namespace: Option<Namespace>,
-
-        kind: Kind,
-    },
-
-    Activity {
-        namespace: Option<Namespace>,
-
-        kind: Kind,
-    },
-
-    Agent {
-        namespace: Option<Namespace>,
-
-        kind: Kind,
-    },
-
-    Assertion,
-
-    External(ExternalType),
-
-    Any,
-}
-
-// =============================================================================
-// ATTRIBUTE SCHEMAS
-// =============================================================================
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ValueType {
     Null,
     Bool,
@@ -687,24 +380,19 @@ pub enum ValueType {
     Decimal,
     String,
     Bytes,
-
+    Entity(EntityTypePattern),
     Ref(NodeType),
-
     List(Box<ValueType>),
-
     Map {
         fields: BTreeMap<FieldName, FieldSchema>,
-
         allow_unknown: bool,
     },
-
     Any,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldSchema {
     pub value_type: ValueType,
-
     pub required: bool,
 }
 
@@ -724,365 +412,481 @@ impl FieldSchema {
     }
 }
 
-// =============================================================================
-// NODE SCHEMAS
-// =============================================================================
-
-/// Schema for one domain-defined node kind.
-///
-/// Namespace ownership is expressed by the containing Schema.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NodeSchema {
-    pub kind: Kind,
-
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntitySchema {
+    pub entity_type: EntityType,
     pub fields: BTreeMap<FieldName, FieldSchema>,
-
     pub allow_unknown_fields: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct RelationType {
+    pub namespace: Namespace,
+    pub name: RelationName,
+}
+
+impl RelationType {
+    pub fn new(namespace: impl Into<Namespace>, name: impl Into<RelationName>) -> Self {
+        Self {
+            namespace: namespace.into(),
+            name: name.into(),
+        }
+    }
+
+    pub fn predicate(&self) -> &RelationName {
+        &self.name
+    }
+}
+
 // =============================================================================
-// RELATION SCHEMA
+// EXPLANATION SEMANTICS
 // =============================================================================
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Plugins can tell the kernel whether a relation participates in `why`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ExplanationRole {
+    Primary,
+    Supporting,
+    Contextual,
+    Causal,
+    Contradicting,
+    Invalidating,
+    Attribution,
+    Influence,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExplanationDirection {
+    FromExplainedByTo,
+    ToExplainedByFrom,
+    Symmetric,
+    SubjectExplainedByObject,
+    ObjectExplainedBySubject,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExplanationSemantics {
+    pub role: ExplanationRole,
+    pub direction: ExplanationDirection,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelationSchema {
     pub relation_type: RelationType,
+    pub from: EntityTypePattern,
+    pub to: EntityTypePattern,
+    /// None => not followed by generic explanation queries.
+    pub explanation: Option<ExplanationSemantics>,
+}
 
-    pub subject: NodeType,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SchemaDefinition {
+    pub key: SchemaKey,
+    /// Other schemas which must already be known.
+    pub requires: BTreeSet<SchemaKey>,
+    pub entities: BTreeMap<EntityKind, EntitySchema>,
+    pub relations: BTreeMap<RelationName, RelationSchema>,
+}
 
-    pub object: NodeType,
+// Compatibility aliases for the extracted vocabulary API.
+pub type ExternalRef<M> = EntityAddress<M>;
+pub type ExternalType = EntityType;
+pub type SchemaId = SchemaKey;
 
-    pub fields: BTreeMap<FieldName, FieldSchema>,
+// =============================================================================
+// SOURCE OPERATION DAG
+// =============================================================================
 
-    pub allow_unknown_fields: bool,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct SourceOperation<M: Model> {
+    /// ```text
+    /// vcs://operation/...
+    /// tracker://event/...
+    /// orchestrator://run-transition/...
+    /// ```
+    pub id: EntityAddress<M>,
+    pub parents: BTreeSet<EntityAddress<M>>,
+}
 
-    /// Optional semantics for explanation consumers.
-    pub explanation_role: Option<ExplanationRole>,
-
-    pub explanation_direction: Option<ExplanationDirection>,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct SourceAnchor<M: Model> {
+    pub source: EntityAddress<M>,
+    pub operation: OperationId<M>,
 }
 
 // =============================================================================
-// SCHEMA
+// EXTERNAL ENTITY OBSERVATIONS
 // =============================================================================
 
-/// Versioned ontology contributed by a domain/plugin.
-///
-/// Examples:
-///
-///     jj@1
-///     tracker@2
-///     docs@1
-///     agent@3
-///     semantic@5
-///     technical@2
-///
-/// Historical provenance can retain the exact SchemaId under which it was
-/// interpreted.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct EntityObservation<M: Model> {
+    pub entity: EntityAddress<M>,
+    /// Exact schema version under which this observation was validated.
+    pub schema: SchemaKey,
+    pub attributes: Attributes<M>,
+}
+
+// =============================================================================
+// RELATIONS
+// =============================================================================
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Relation<M: Model> {
+    /// Exact schema version defining this relation.
+    pub schema: SchemaKey,
+    pub relation_type: RelationType,
+    pub from: EntityRef<M>,
+    pub to: EntityRef<M>,
+    pub attributes: Attributes<M>,
+}
+
+// =============================================================================
+// CORE DATA ENTITIES
+// =============================================================================
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Session<M: Model> {
+    pub id: SessionId<M>,
+    pub parent: Option<SessionId<M>>,
+    pub attributes: Attributes<M>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Actor<M: Model> {
+    pub id: ActorId<M>,
+    pub session: Option<SessionId<M>>,
+    pub attributes: Attributes<M>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Object<M: Model> {
+    pub id: ObjectId<M>,
+    pub payload: M::Payload,
+    pub attributes: Attributes<M>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Replica<M: Model> {
+    pub id: ReplicaId<M>,
+    pub attributes: Attributes<M>,
+}
+
+// =============================================================================
+// VOCABULARY NODE REFERENCES AND BUNDLES
+// =============================================================================
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum EntityTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum ActivityTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum AgentTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum AssertionTag {}
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum BundleTag {}
+
+pub type EntityId<M> = Id<<M as Model>::Id, EntityTag>;
+pub type ActivityId<M> = Id<<M as Model>::Id, ActivityTag>;
+pub type AgentId<M> = Id<<M as Model>::Id, AgentTag>;
+pub type AssertionId<M> = Id<<M as Model>::Id, AssertionTag>;
+pub type BundleId<M> = Id<<M as Model>::Id, BundleTag>;
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub enum NodeRef<M: Model> {
+    Entity(EntityId<M>),
+    Activity(ActivityId<M>),
+    Agent(AgentId<M>),
+    External(ExternalRef<M>),
+    Assertion(AssertionId<M>),
+}
+
+impl<M: Model> NodeRef<M> {
+    pub fn external(
+        namespace: impl Into<Namespace>,
+        kind: impl Into<Kind>,
+        id: M::ExternalId,
+    ) -> Self {
+        Self::External(EntityAddress {
+            namespace: namespace.into(),
+            kind: kind.into(),
+            id,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Entity<M: Model> {
+    pub id: EntityId<M>,
+    pub kind: Kind,
+    pub external: Option<ExternalRef<M>>,
+    pub attributes: Attributes<M>,
+}
+
+impl<M: Model> Entity<M> {
+    pub fn reference(&self) -> NodeRef<M> {
+        NodeRef::Entity(self.id.clone())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Activity<M: Model> {
+    pub id: ActivityId<M>,
+    pub kind: Kind,
+    pub external: Option<ExternalRef<M>>,
+    pub attributes: Attributes<M>,
+}
+
+impl<M: Model> Activity<M> {
+    pub fn reference(&self) -> NodeRef<M> {
+        NodeRef::Activity(self.id.clone())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Agent<M: Model> {
+    pub id: AgentId<M>,
+    pub kind: Kind,
+    pub external: Option<ExternalRef<M>>,
+    pub attributes: Attributes<M>,
+}
+
+impl<M: Model> Agent<M> {
+    pub fn reference(&self) -> NodeRef<M> {
+        NodeRef::Agent(self.id.clone())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub struct Assertion<M: Model> {
+    pub id: AssertionId<M>,
+    pub subject: NodeRef<M>,
+    pub predicate: RelationType,
+    pub object: NodeRef<M>,
+    pub generated_by: Option<ActivityId<M>>,
+    pub validity: Validity<M>,
+    pub attributes: Attributes<M>,
+}
+
+impl<M: Model> Assertion<M> {
+    pub fn new(
+        id: AssertionId<M>,
+        subject: NodeRef<M>,
+        predicate: RelationType,
+        object: NodeRef<M>,
+    ) -> Self {
+        Self {
+            id,
+            subject,
+            predicate,
+            object,
+            generated_by: None,
+            validity: Validity::Unspecified,
+            attributes: BTreeMap::new(),
+        }
+    }
+
+    pub fn reference(&self) -> NodeRef<M> {
+        NodeRef::Assertion(self.id.clone())
+    }
+
+    pub fn generated_by(mut self, activity: ActivityId<M>) -> Self {
+        self.generated_by = Some(activity);
+        self
+    }
+
+    pub fn with_validity(mut self, validity: Validity<M>) -> Self {
+        self.validity = validity;
+        self
+    }
+
+    pub fn with_attribute(mut self, field: impl Into<FieldName>, value: Value<M>) -> Self {
+        self.attributes.insert(field.into(), value);
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
+pub enum Validity<M: Model> {
+    Unspecified,
+    Active,
+    Superseded {
+        by: AssertionId<M>,
+    },
+    Invalidated {
+        by: AssertionId<M>,
+    },
+    Interval {
+        from: BundleId<M>,
+        until: Option<BundleId<M>>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeSchema {
+    pub kind: Kind,
+    pub fields: BTreeMap<FieldName, FieldSchema>,
+    pub allow_unknown_fields: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NodeType {
+    Entity {
+        namespace: Option<Namespace>,
+        kind: Kind,
+    },
+    Activity {
+        namespace: Option<Namespace>,
+        kind: Kind,
+    },
+    Agent {
+        namespace: Option<Namespace>,
+        kind: Kind,
+    },
+    Assertion,
+    External(ExternalType),
+    Any,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schema {
     pub id: SchemaId,
-
-    /// Other schemas referenced by this schema.
     pub requires: BTreeSet<SchemaId>,
-
     pub entities: BTreeMap<Kind, NodeSchema>,
-
     pub activities: BTreeMap<Kind, NodeSchema>,
-
     pub agents: BTreeMap<Kind, NodeSchema>,
-
     pub relations: BTreeMap<Predicate, RelationSchema>,
 }
 
-// =============================================================================
-// BUNDLE
-// =============================================================================
-
-/// Immutable logical grouping of provenance observations.
-///
-/// Examples:
-///
-///     one JJ operation
-///     one issue transition
-///     one agent run
-///     one CI execution
-///     one imported trace
-///     one semantic extraction episode
-///
-/// IMPORTANT:
-///
-/// This is ONLY representation.
-///
-/// It does not imply:
-///
-///     transaction
-///     atomicity
-///     publication
-///     locking
-///     persistence
-///     retention
-///
-/// Higher layers may assign those semantics.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
 pub struct Bundle<M: Model> {
     pub id: BundleId<M>,
-
-    /// Optional external source represented by this bundle.
     pub source: Option<ExternalRef<M>>,
-
-    /// Logical/causal bundle ancestry.
     pub parents: BTreeSet<BundleId<M>>,
-
-    /// Exact schema versions used by this bundle.
     pub schemas: BTreeSet<SchemaId>,
-
     pub entities: Vec<Entity<M>>,
-
     pub activities: Vec<Activity<M>>,
-
     pub agents: Vec<Agent<M>>,
-
     pub assertions: Vec<Assertion<M>>,
-
     pub attributes: Attributes<M>,
 }
 
-// =============================================================================
-// GRAPH DOCUMENT
-// =============================================================================
-
-/// Portable aggregate of provenance data.
-///
-/// Possible uses:
-///
-///     export/import
-///     plugin payload
-///     synchronization payload
-///     query response
-///     archive format
-///     interchange format
-///
-/// Still no storage semantics.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
 pub struct ProvenanceGraph<M: Model> {
     pub schemas: Vec<Schema>,
-
     pub bundles: Vec<Bundle<M>>,
 }
 
-// =============================================================================
-// OPTIONAL SEMANTIC CONVENIENCE TYPES
-// =============================================================================
-
-/// A projection/classification attached to a node.
-///
-/// Example:
-///
-///     source.authoritative = true
-///     environment = production
-///     classification = pii
-///
-/// Whether/how these propagate is NOT defined here.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
 pub struct Classification<M: Model> {
     pub subject: NodeRef<M>,
-
     pub field: FieldName,
-
     pub value: Value<M>,
 }
 
-/// Represents entity reconciliation without destroying the original identities.
-///
-/// Consumers would normally encode this as an Assertion using `merged-into` or
-/// a domain-specific predicate. This helper merely gives such tooling a common
-/// shape.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(
+    serialize = "M::Id: Serialize, M::Seed: Serialize, M::ExternalId: Serialize, M::Payload: Serialize",
+    deserialize = "M::Id: Deserialize<'de>, M::Seed: Deserialize<'de>, M::ExternalId: Deserialize<'de>, M::Payload: Deserialize<'de>",
+))]
 pub struct IdentityResolution<M: Model> {
     pub members: BTreeSet<NodeRef<M>>,
-
     pub canonical: NodeRef<M>,
-
     pub generated_by: Option<ActivityId<M>>,
-
     pub attributes: Attributes<M>,
 }
 
-// =============================================================================
-// EXAMPLE DOMAIN SHAPES
-// =============================================================================
-//
-// None of the following become Rust enums here.
-//
-// -----------------------------------------------------------------------------
-// SOFTWARE DEVELOPMENT
-// -----------------------------------------------------------------------------
-//
-// Entity:
-//
-//     jj://commit/abc
-//     tracker://task/PROJ-42
-//     docs://rfc/0001
-//
-// Activity:
-//
-//     agent://run/R1
-//     jj://operation/O42
-//
-// Agent:
-//
-//     agent://coding-agent/codex
-//     identity://human/alice
-//
-// Assertions:
-//
-//     commit abc
-//         implements
-//     task PROJ-42
-//
-//     commit abc
-//         generated-by
-//     agent run R1
-//
-//     agent run R1
-//         used
-//     RFC 0001
-//
-//     commit abc
-//         derived-from
-//     commit def
-//
-//
-// -----------------------------------------------------------------------------
-// APPLICATION-LEVEL AGENT
-// -----------------------------------------------------------------------------
-//
-// Entity:
-//
-//     semantic://concept/customer.credit-limit
-//     technical://column/crm.customer.credit_limit
-//     technical://api/customer-service/get-customer
-//     answer://artifact/A1
-//
-// Activity:
-//
-//     agent://run/R99
-//     tool://query/Q11
-//
-// Agent:
-//
-//     agent://support-assistant/v3
-//
-// Assertions:
-//
-//     semantic customer.credit-limit
-//         represented-by
-//     technical crm.customer.credit_limit
-//
-//     agent run R99
-//         considered
-//     API A
-//
-//     agent run R99
-//         considered
-//     database B
-//
-//     agent run R99
-//         selected
-//     database B
-//
-//     agent run R99
-//         used
-//     crm.customer.credit_limit
-//
-//     answer A1
-//         generated-by
-//     agent run R99
-//
-//
-// -----------------------------------------------------------------------------
-// SYNTHESIZED KNOWLEDGE
-// -----------------------------------------------------------------------------
-//
-// Sources:
-//
-//     E1
-//     E2
-//     E3
-//
-// Activity:
-//
-//     agent inference R
-//
-// Assertion A:
-//
-//     customer X
-//         risk-level
-//     high
-//
-// A.generated_by = R
-//
-// Assertions:
-//
-//     R used E1
-//     R used E2
-//     R used E3
-//
-// Later:
-//
-// Assertion B
-//     contradicts
-// Assertion A
-//
-// or:
-//
-// Assertion C
-//     invalidates
-// Assertion A
-//
-//
-// The old assertion remains part of history.
-//
-// =============================================================================
-// DESIGN INVARIANTS OF THIS CRATE
-// =============================================================================
-//
-// 1. Domain-specific concepts are schema-defined, not hard-coded.
-//
-// 2. Assertions are first-class objects.
-//
-// 3. Assertions may themselves participate in provenance.
-//
-// 4. Activities represent causal/action units.
-//
-// 5. Agents represent responsibility/agency.
-//
-// 6. Entities represent things.
-//
-// 7. External identities are structured as:
-//
-//        namespace + kind + external ID
-//
-//    rather than opaque URI strings.
-//
-// 8. Historical invalidation/supersession is represented rather than erased.
-//
-// 9. Multi-source synthesis is naturally represented through:
-//
-//        source entities
-//             ↓
-//        used by activity
-//             ↓
-//        generated assertion/entity
-//
-// 10. Semantic ontology and technical ontology use exactly the same graph
-//     primitives.
-//
-// 11. Software provenance and application-agent provenance use exactly the
-//     same graph primitives.
-//
-// 12. This crate does not decide what is true, trusted, retained, queryable,
-//     stored, committed, visible, or permitted.
-//
-// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::de::DeserializeOwned;
+
+    #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+    struct TestModel;
+
+    impl Model for TestModel {
+        type Id = String;
+        type Seed = String;
+        type ExternalId = String;
+        type Payload = Vec<u8>;
+    }
+
+    fn assert_serde<T: Serialize + DeserializeOwned>() {}
+
+    #[test]
+    fn current_kernel_vocabulary_is_serde_capable() {
+        assert_serde::<EntityAddress<TestModel>>();
+        assert_serde::<EntityRef<TestModel>>();
+        assert_serde::<Value<TestModel>>();
+        assert_serde::<SourceOperation<TestModel>>();
+        assert_serde::<Bundle<TestModel>>();
+    }
+}

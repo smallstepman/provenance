@@ -1945,6 +1945,14 @@ dependencies = [
 name = "provenance-core"
 version = "0.1.0"
 dependencies = [
+ "provenance-data-model",
+ "serde",
+]
+
+[[package]]
+name = "provenance-data-model"
+version = "0.1.0"
+dependencies = [
  "serde",
 ]
 
