@@ -165,27 +165,21 @@ pub enum IdentityKind {
 /// Only one primitive must be implemented by a provenance model.
 pub trait IdentityScheme<M: Model>: Send + Sync {
     fn derive(&self, kind: IdentityKind, seed: &M::Seed, discriminator: &str) -> M::Id;
-
     fn operation(&self, seed: &M::Seed) -> OperationId<M> {
         OperationId::<M>::new(self.derive(IdentityKind::Operation, seed, "operation"))
     }
-
     fn event(&self, seed: &M::Seed, index: usize) -> EventId<M> {
         EventId::<M>::new(self.derive(IdentityKind::Event, seed, &format!("event:{index}")))
     }
-
     fn session(&self, seed: &M::Seed) -> SessionId<M> {
         SessionId::<M>::new(self.derive(IdentityKind::Session, seed, "session"))
     }
-
     fn actor(&self, seed: &M::Seed) -> ActorId<M> {
         ActorId::<M>::new(self.derive(IdentityKind::Actor, seed, "actor"))
     }
-
     fn object(&self, seed: &M::Seed, index: usize) -> ObjectId<M> {
         ObjectId::<M>::new(self.derive(IdentityKind::Object, seed, &format!("object:{index}")))
     }
-
     fn claim(&self, seed: &M::Seed, event_index: usize, requirement_index: usize) -> ClaimId<M> {
         ClaimId::<M>::new(self.derive(
             IdentityKind::Claim,
@@ -193,7 +187,6 @@ pub trait IdentityScheme<M: Model>: Send + Sync {
             &format!("claim:{event_index}:{requirement_index}"),
         ))
     }
-
     fn replica(&self, seed: &M::Seed) -> ReplicaId<M> {
         ReplicaId::<M>::new(self.derive(IdentityKind::Replica, seed, "replica"))
     }

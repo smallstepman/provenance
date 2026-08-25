@@ -105,9 +105,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fmt::{self, Debug},
     marker::PhantomData,
-};
-
-// =============================================================================
+}; // =============================================================================
 // GENERIC COLLECTIONS
 // =============================================================================
 
@@ -164,7 +162,6 @@ where
             }
 
             Some(existing) if existing == &value => Ok(DeclareOutcome::AlreadyPresent),
-
             Some(_) => Err(Error::IdentityCollision),
         }
     }
@@ -311,15 +308,12 @@ where
     pub fn get(&self, key: &K) -> Option<&BTreeSet<V>> {
         self.inner.get(key)
     }
-
     pub fn insert(&mut self, key: K, value: V) {
         self.inner.entry(key).or_default().insert(value);
     }
-
     pub fn remove(&mut self, key: &K, value: &V) {
         if let Some(values) = self.inner.get_mut(key) {
             values.remove(value);
-
             if values.is_empty() {
                 self.inner.remove(key);
             }
@@ -589,15 +583,11 @@ pub struct Projection<M: Model> {
     // ontology
     // -------------------------------------------------------------------------
     pub schemas: Ledger<SchemaKey, SchemaDefinition>,
-    pub named_queries: Ledger<QueryKey, NamedQueryDefinition>,
-
-    // -------------------------------------------------------------------------
+    pub named_queries: Ledger<QueryKey, NamedQueryDefinition>, // -------------------------------------------------------------------------
     // source mapping
     // -------------------------------------------------------------------------
     pub source_to_operation: Index<EntityAddress<M>, OperationId<M>>,
-    pub source_to_primary_event: Index<EntityAddress<M>, EventId<M>>,
-
-    // -------------------------------------------------------------------------
+    pub source_to_primary_event: Index<EntityAddress<M>, EventId<M>>, // -------------------------------------------------------------------------
     // internal entities
     // -------------------------------------------------------------------------
     pub sessions: Ledger<SessionId<M>, Session<M>>,
@@ -606,20 +596,15 @@ pub struct Projection<M: Model> {
     pub objects: Ledger<ObjectId<M>, Object<M>>,
     pub events: Ledger<EventId<M>, Event<M>>,
     pub event_heads: Set<EventId<M>>,
-    pub replicas: Ledger<ReplicaId<M>, Replica<M>>,
-
-    // -------------------------------------------------------------------------
+    pub replicas: Ledger<ReplicaId<M>, Replica<M>>, // -------------------------------------------------------------------------
     // heterogeneous SDLC graph
     // -------------------------------------------------------------------------
     /// Latest external entity state.
     pub entities: Index<EntityAddress<M>, EntityObservation<M>>,
-
     /// Complete operation history for each external entity.
     pub entity_history: MultiIndex<EntityAddress<M>, OperationId<M>>,
     pub outgoing: MultiIndex<EntityRef<M>, GraphEdge<M>>,
-    pub incoming: MultiIndex<EntityRef<M>, GraphEdge<M>>,
-
-    // -------------------------------------------------------------------------
+    pub incoming: MultiIndex<EntityRef<M>, GraphEdge<M>>, // -------------------------------------------------------------------------
     // retention
     // -------------------------------------------------------------------------
     pub active_retention: Index<ClaimId<M>, RetentionClaim<M>>,
@@ -715,9 +700,7 @@ impl<M: Model> Projection<M> {
             self.observed_retention(resource),
         ) {
             (None, _) => true,
-
             (Some(required), Some(observed)) => observed >= required,
-
             (Some(_), None) => false,
         }
     }
@@ -729,7 +712,6 @@ impl<M: Model> Projection<M> {
             .filter(|(_, claim)| &claim.resource == resource)
             .map(|(_, claim)| claim.strength)
             .max();
-
         match strength {
             Some(strength) => {
                 self.required_retention.set(resource.clone(), strength);
@@ -756,10 +738,8 @@ impl<M: Model> Projection<M> {
 pub struct State<M: Model> {
     /// AUTHORITATIVE.
     pub operations: Ledger<OperationId<M>, Operation<M>>,
-
     /// DERIVED.
     pub operation_heads: Set<OperationId<M>>,
-
     /// DERIVED.
     pub projection: Projection<M>,
 }
@@ -768,9 +748,7 @@ impl<M: Model> Default for State<M> {
     fn default() -> Self {
         Self {
             operations: Ledger::default(),
-
             operation_heads: Set::default(),
-
             projection: Projection::default(),
         }
     }
@@ -780,23 +758,18 @@ impl<M: Model> State<M> {
     pub fn new() -> Self {
         Self::default()
     }
-
     pub fn operation(&self, id: &OperationId<M>) -> Option<&Operation<M>> {
         self.operations.get(id)
     }
-
     pub fn operation_for_source(&self, source: &EntityAddress<M>) -> Option<&OperationId<M>> {
         self.projection.source_to_operation.get(source)
     }
-
     pub fn has_source(&self, source: &EntityAddress<M>) -> bool {
         self.operation_for_source(source).is_some()
     }
-
     pub fn rebuild(&mut self) -> Result<()> {
         let mut projection = Projection::default();
         let ordered = topological_operations(&self.operations)?;
-
         for operation in ordered {
             apply_operation(&mut projection, operation)?;
         }
@@ -804,7 +777,6 @@ impl<M: Model> State<M> {
         let operation_heads = compute_operation_heads(&self.operations);
         self.projection = projection;
         self.operation_heads = operation_heads;
-
         Ok(())
     }
 }
@@ -820,18 +792,12 @@ impl<M: Model> State<M> {
 ))]
 pub struct EventIntent<M: Model> {
     pub session: Option<SessionId<M>>,
-
     pub actor: Option<ActorId<M>>,
-
     /// Source causal parents are inherited automatically.
     pub additional_parents: BTreeSet<EventId<M>>,
-
     pub subjects: BTreeSet<EntityRef<M>>,
-
     pub relations: BTreeSet<Relation<M>>,
-
     pub requires: BTreeSet<ResourceRequirement<M>>,
-
     pub attributes: Attributes<M>,
 }
 
@@ -842,54 +808,36 @@ pub struct EventIntent<M: Model> {
 ))]
 pub enum Intent<M: Model> {
     RegisterSchema(SchemaDefinition),
-
     RegisterNamedQuery(NamedQueryDefinition),
-
     OpenSession {
         seed: M::Seed,
-
         parent: Option<SessionId<M>>,
-
         attributes: Attributes<M>,
     },
-
     EndSession {
         session: SessionId<M>,
     },
-
     DeclareActor {
         seed: M::Seed,
-
         session: Option<SessionId<M>>,
-
         attributes: Attributes<M>,
     },
-
     PutObject {
         seed: M::Seed,
-
         payload: M::Payload,
-
         attributes: Attributes<M>,
     },
-
     ObserveEntity(EntityObservation<M>),
-
     RecordEvent(EventIntent<M>),
-
     ReleaseRetention {
         claim: ClaimId<M>,
     },
-
     DeclareReplica {
         seed: M::Seed,
-
         attributes: Attributes<M>,
     },
-
     ObserveResource {
         resource: Resource<M>,
-
         observation: ResourceObservation<M>,
     },
 }
@@ -901,11 +849,8 @@ pub enum Intent<M: Model> {
 ))]
 pub struct Transaction<M: Model> {
     pub seed: M::Seed,
-
     pub source: Option<SourceOperation<M>>,
-
     pub intents: Vec<Intent<M>>,
-
     pub attributes: Attributes<M>,
 }
 
@@ -917,7 +862,6 @@ pub trait Rules<M: Model>: Send + Sync {
     fn validate_schema(&self, _state: &State<M>, _schema: &SchemaDefinition) -> Result<()> {
         Ok(())
     }
-
     fn validate_entity_observation(
         &self,
         _state: &State<M>,
@@ -925,19 +869,15 @@ pub trait Rules<M: Model>: Send + Sync {
     ) -> Result<()> {
         Ok(())
     }
-
     fn validate_event(&self, _state: &State<M>, _event: &Event<M>) -> Result<()> {
         Ok(())
     }
-
     fn validate_operation(&self, _state: &State<M>, _operation: &Operation<M>) -> Result<()> {
         Ok(())
     }
-
     fn require_source_parents(&self) -> bool {
         true
     }
-
     fn retain_event_requirements(&self) -> bool {
         true
     }
@@ -945,7 +885,6 @@ pub trait Rules<M: Model>: Send + Sync {
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 pub struct DefaultRules;
-
 impl<M: Model> Rules<M> for DefaultRules {}
 
 // =============================================================================
@@ -960,7 +899,6 @@ impl<M: Model> Rules<M> for DefaultRules {}
 ))]
 pub enum PrepareRequirement<M: Model> {
     MaterializeObject(Object<M>),
-
     Retention(RetentionTransition<M>),
 }
 
@@ -984,13 +922,9 @@ pub enum FinalizeAction<M: Model> {
 ))]
 pub struct CommitPlan<M: Model> {
     pub prepare: Vec<PrepareRequirement<M>>,
-
     pub operation: Operation<M>,
-
     pub next_state: State<M>,
-
     pub finalize: Vec<FinalizeAction<M>>,
-
     pub idempotent: bool,
 }
 
@@ -1002,45 +936,30 @@ pub struct CommitPlan<M: Model> {
 pub enum Error {
     Missing,
     IdentityCollision,
-
     MissingSourceParent,
     SourceAlreadyMappedDifferently,
-
     MissingOperationParent,
     OperationCycle,
-
     MissingSchema,
     MissingSchemaDependency,
     InvalidSchemaNamespace,
-
     MissingEntitySchema,
     MissingRelationSchema,
-
     InvalidEntityType,
     InvalidRelationEndpoint,
-
     MissingRequiredField,
     UnknownField,
     InvalidFieldType,
-
     MissingSession,
     SessionAlreadyEnded,
-
     MissingActor,
     ActorSessionMismatch,
-
     MissingEvent,
-
     MissingObject,
-
     UnknownRetentionClaim,
-
     InvalidSelfRelation,
-
     InvalidNamedQuery,
-
     MergeConflict,
-
     PolicyRejected,
 }
 
@@ -1052,16 +971,13 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-// =============================================================================
+pub type Result<T> = std::result::Result<T, Error>; // =============================================================================
 // SCHEMA VALIDATION
 // =============================================================================
 
 fn matches_entity_type<M: Model>(entity: &EntityRef<M>, expected: &EntityTypePattern) -> bool {
     match expected {
         EntityTypePattern::Any => true,
-
         EntityTypePattern::External(expected) => {
             matches!(
                 entity,
@@ -1069,7 +985,6 @@ fn matches_entity_type<M: Model>(entity: &EntityRef<M>, expected: &EntityTypePat
                     if &address.entity_type() == expected
             )
         }
-
         EntityTypePattern::Internal(expected) => {
             matches!(
                 entity.type_pattern(),
@@ -1083,27 +998,18 @@ fn matches_entity_type<M: Model>(entity: &EntityRef<M>, expected: &EntityTypePat
 fn value_matches<M: Model>(value: &Value<M>, expected: &ValueType) -> bool {
     match (value, expected) {
         (_, ValueType::Any) => true,
-
         (Value::Null, ValueType::Null) => true,
-
         (Value::Bool(_), ValueType::Bool) => true,
-
         (Value::Integer(_), ValueType::Integer) => true,
-
         (Value::Decimal(_), ValueType::Decimal) => true,
-
         (Value::String(_), ValueType::String) => true,
-
         (Value::Bytes(_), ValueType::Bytes) => true,
-
         (Value::Entity(entity), ValueType::Entity(expected)) => {
             matches_entity_type(entity, expected)
         }
-
         (Value::List(values), ValueType::List(inner)) => {
             values.iter().all(|value| value_matches(value, inner))
         }
-
         (
             Value::Map(values),
             ValueType::Map {
@@ -1111,7 +1017,6 @@ fn value_matches<M: Model>(value: &Value<M>, expected: &ValueType) -> bool {
                 allow_unknown,
             },
         ) => validate_attribute_map(values, fields, *allow_unknown).is_ok(),
-
         _ => false,
     }
 }
@@ -1135,7 +1040,6 @@ fn validate_attribute_map<M: Model>(
 
             return Err(Error::UnknownField);
         };
-
         if !value_matches(value, &schema.value_type) {
             return Err(Error::InvalidFieldType);
         }
@@ -1150,7 +1054,6 @@ fn find_entity_schema<'a, M: Model>(
     entity_type: &EntityType,
 ) -> Result<&'a EntitySchema> {
     let schema = projection.require_schema(schema_key)?;
-
     schema
         .entities
         .get(&entity_type.kind)
@@ -1163,7 +1066,6 @@ fn find_relation_schema<'a, M: Model>(
     relation: &Relation<M>,
 ) -> Result<&'a RelationSchema> {
     let schema = projection.require_schema(&relation.schema)?;
-
     schema
         .relations
         .get(&relation.relation_type.name)
@@ -1176,9 +1078,7 @@ fn validate_entity_observation_schema<M: Model>(
     observation: &EntityObservation<M>,
 ) -> Result<()> {
     let entity_type = observation.entity.entity_type();
-
     let schema = find_entity_schema(projection, &observation.schema, &entity_type)?;
-
     validate_attribute_map(
         &observation.attributes,
         &schema.fields,
@@ -1192,7 +1092,6 @@ fn validate_relation<M: Model>(projection: &Projection<M>, relation: &Relation<M
     }
 
     let schema = find_relation_schema(projection, relation)?;
-
     if !matches_entity_type(&relation.from, &schema.from) {
         return Err(Error::InvalidRelationEndpoint);
     }
@@ -1218,6 +1117,7 @@ where
     rules: R,
     _model: PhantomData<fn() -> M>,
 }
+
 struct SourceResolution<M: Model>(
     Option<EntityAddress<M>>,
     BTreeSet<OperationId<M>>,
@@ -1258,11 +1158,8 @@ where
 
     pub fn transact(&self, state: &State<M>, tx: Transaction<M>) -> Result<CommitPlan<M>> {
         let operation_id = self.ids.operation(&tx.seed);
-
         let SourceResolution(source, operation_parents, inherited_event_parents) =
-            self.resolve_source(state, &tx, &operation_id)?;
-
-        // ---------------------------------------------------------------------
+            self.resolve_source(state, &tx, &operation_id)?; // ---------------------------------------------------------------------
         // Source replay fast path.
         // ---------------------------------------------------------------------
 
@@ -1273,7 +1170,6 @@ where
                 .operations
                 .get(existing_id)
                 .ok_or(Error::MissingOperationParent)?;
-
             if existing.id == operation_id {
                 return Ok(CommitPlan {
                     prepare: Vec::new(),
@@ -1288,30 +1184,21 @@ where
         }
 
         let mut projection = state.projection.clone();
-
         let mut facts = Vec::new();
-
         let mut prepare = Vec::new();
-
         let mut finalize = Vec::new();
-
         if let Some(source) = source.clone() {
             let fact = Fact::SourceAnchored(SourceAnchor {
                 source,
                 operation: operation_id.clone(),
             });
-
             apply_fact(&mut projection, &operation_id, &fact)?;
-
             facts.push(fact);
         }
 
         let mut event_index = 0usize;
-
         let mut object_index = 0usize;
-
         let mut primary_event = None;
-
         for intent in tx.intents {
             match intent {
                 // =============================================================
@@ -1325,7 +1212,6 @@ where
                     }
 
                     self.rules.validate_schema(state, &schema)?;
-
                     match projection
                         .schemas
                         .declare(schema.key.clone(), schema.clone())?
@@ -1375,12 +1261,9 @@ where
 
                     let session = Session {
                         id: self.ids.session(&seed),
-
                         parent,
-
                         attributes,
                     };
-
                     match projection
                         .sessions
                         .declare(session.id.clone(), session.clone())?
@@ -1397,13 +1280,11 @@ where
 
                 Intent::EndSession { session } => {
                     projection.require_session(&session)?;
-
                     if projection.ended_sessions.contains(&session) {
                         continue;
                     }
 
                     projection.ended_sessions.insert(session.clone());
-
                     facts.push(Fact::SessionEnded { session });
                 }
 
@@ -1417,7 +1298,6 @@ where
                 } => {
                     if let Some(session) = &session {
                         projection.require_session(session)?;
-
                         if !projection.session_active(session) {
                             return Err(Error::SessionAlreadyEnded);
                         }
@@ -1425,12 +1305,9 @@ where
 
                     let actor = Actor {
                         id: self.ids.actor(&seed),
-
                         session,
-
                         attributes,
                     };
-
                     match projection.actors.declare(actor.id.clone(), actor.clone())? {
                         DeclareOutcome::AlreadyPresent => {
                             continue;
@@ -1452,14 +1329,10 @@ where
                 } => {
                     let object = Object {
                         id: self.ids.object(&seed, object_index),
-
                         payload,
-
                         attributes,
                     };
-
                     object_index += 1;
-
                     match projection
                         .objects
                         .declare(object.id.clone(), object.clone())?
@@ -1472,7 +1345,6 @@ where
                     }
 
                     prepare.push(PrepareRequirement::MaterializeObject(object.clone()));
-
                     facts.push(Fact::ObjectDeclared(object));
                 }
 
@@ -1481,18 +1353,14 @@ where
                 // =============================================================
                 Intent::ObserveEntity(observation) => {
                     validate_entity_observation_schema(&projection, &observation)?;
-
                     self.rules
                         .validate_entity_observation(state, &observation)?;
-
                     projection
                         .entities
                         .set(observation.entity.clone(), observation.clone());
-
                     projection
                         .entity_history
                         .insert(observation.entity.clone(), operation_id.clone());
-
                     facts.push(Fact::EntityObserved(observation));
                 }
 
@@ -1501,18 +1369,14 @@ where
                 // =============================================================
                 Intent::RecordEvent(intent) => {
                     let event_id = self.ids.event(&tx.seed, event_index);
-
                     let mut parents = inherited_event_parents.clone();
-
                     parents.extend(intent.additional_parents.iter().cloned());
-
                     for parent in &parents {
                         projection.require_event(parent)?;
                     }
 
                     if let Some(session) = &intent.session {
                         projection.require_session(session)?;
-
                         if !projection.session_active(session) {
                             return Err(Error::SessionAlreadyEnded);
                         }
@@ -1520,7 +1384,6 @@ where
 
                     if let Some(actor_id) = &intent.actor {
                         let actor = projection.require_actor(actor_id)?;
-
                         if let (Some(event_session), Some(actor_session)) =
                             (&intent.session, &actor.session)
                             && event_session != actor_session
@@ -1535,24 +1398,15 @@ where
 
                     let event = Event {
                         id: event_id.clone(),
-
                         session: intent.session,
-
                         actor: intent.actor,
-
                         parents,
-
                         subjects: intent.subjects,
-
                         relations: intent.relations,
-
                         requires: intent.requires,
-
                         attributes: intent.attributes,
                     };
-
                     self.rules.validate_event(state, &event)?;
-
                     match projection.events.declare(event.id.clone(), event.clone())? {
                         DeclareOutcome::AlreadyPresent => {
                             event_index += 1;
@@ -1567,25 +1421,19 @@ where
                     }
 
                     projection.event_heads.insert(event.id.clone());
-
                     for relation in &event.relations {
                         let edge = GraphEdge {
                             relation: relation.clone(),
-
                             event: event.id.clone(),
-
                             operation: operation_id.clone(),
                         };
-
                         projection
                             .outgoing
                             .insert(relation.from.clone(), edge.clone());
-
                         projection.incoming.insert(relation.to.clone(), edge);
                     }
 
                     facts.push(Fact::EventRecorded(event.clone()));
-
                     if primary_event.is_none() {
                         primary_event = Some(event.id.clone());
                     }
@@ -1599,17 +1447,12 @@ where
                             event.requires.iter().cloned().enumerate()
                         {
                             let before = projection.effective_retention(&requirement.resource);
-
                             let claim = RetentionClaim {
                                 id: self.ids.claim(&tx.seed, event_index, requirement_index),
-
                                 owner: RetentionOwner::Event(event.id.clone()),
-
                                 resource: requirement.resource.clone(),
-
                                 strength: requirement.strength,
                             };
-
                             if let Some(existing) = projection.active_retention.get(&claim.id) {
                                 if existing != &claim {
                                     return Err(Error::IdentityCollision);
@@ -1621,9 +1464,7 @@ where
                             projection
                                 .active_retention
                                 .set(claim.id.clone(), claim.clone());
-
                             let after = projection.recompute_retention_for(&claim.resource);
-
                             if let Some(transition) =
                                 retention_transition(claim.resource.clone(), before, after)
                             {
@@ -1650,13 +1491,9 @@ where
                         .get(&claim)
                         .cloned()
                         .ok_or(Error::UnknownRetentionClaim)?;
-
                     let before = projection.effective_retention(&existing.resource);
-
                     projection.active_retention.remove(&claim);
-
                     let after = projection.recompute_retention_for(&existing.resource);
-
                     if let Some(transition) = retention_transition(existing.resource, before, after)
                     {
                         if retention_is_prepare(&transition) {
@@ -1675,10 +1512,8 @@ where
                 Intent::DeclareReplica { seed, attributes } => {
                     let replica = Replica {
                         id: self.ids.replica(&seed),
-
                         attributes,
                     };
-
                     match projection
                         .replicas
                         .declare(replica.id.clone(), replica.clone())?
@@ -1707,7 +1542,6 @@ where
                     projection
                         .resource_observations
                         .set(resource.clone(), observation.clone());
-
                     facts.push(Fact::ResourceObserved {
                         resource,
                         observation,
@@ -1722,29 +1556,19 @@ where
 
         let operation = Operation {
             id: operation_id.clone(),
-
             parents: operation_parents,
-
             source,
-
             facts,
-
             attributes: tx.attributes,
         };
-
         self.rules.validate_operation(state, &operation)?;
-
         if let Some(existing) = state.operations.get(&operation.id) {
             if existing == &operation {
                 return Ok(CommitPlan {
                     prepare: Vec::new(),
-
                     operation: existing.clone(),
-
                     next_state: state.clone(),
-
                     finalize: Vec::new(),
-
                     idempotent: true,
                 });
             }
@@ -1753,18 +1577,14 @@ where
         }
 
         let mut next = state.clone();
-
         for parent in &operation.parents {
             next.operation_heads.remove(parent);
         }
 
         next.operation_heads.insert(operation.id.clone());
-
         next.operations
             .declare(operation.id.clone(), operation.clone())?;
-
         next.projection = projection;
-
         Ok(CommitPlan {
             prepare,
             operation,
@@ -1791,7 +1611,6 @@ where
                 state.projection.event_heads.cloned(),
             ));
         };
-
         if let Some(existing) = state.projection.source_to_operation.get(&source.id)
             && existing != operation_id
         {
@@ -1799,19 +1618,15 @@ where
         }
 
         let mut operation_parents = BTreeSet::new();
-
         let mut event_parents = BTreeSet::new();
-
         for source_parent in &source.parents {
             match state.projection.source_to_operation.get(source_parent) {
                 Some(parent) => {
                     operation_parents.insert(parent.clone());
                 }
-
                 None if self.rules.require_source_parents() => {
                     return Err(Error::MissingSourceParent);
                 }
-
                 None => {}
             }
 
@@ -1833,13 +1648,11 @@ where
 
     pub fn merge(&self, left: &State<M>, right: &State<M>) -> Result<State<M>> {
         let mut merged = left.clone();
-
         for (id, operation) in right.operations.iter() {
             merged.operations.declare(id.clone(), operation.clone())?;
         }
 
         merged.rebuild()?;
-
         Ok(merged)
     }
 
@@ -1858,35 +1671,26 @@ where
             .named_queries
             .get(key)
             .ok_or(Error::InvalidNamedQuery)?;
-
         if !matches_entity_type(&input, &definition.input) {
             return Err(Error::InvalidNamedQuery);
         }
 
         Ok(match &definition.template {
             QueryTemplate::History => Query::History { entity: input },
-
             QueryTemplate::Explain { max_depth, roles } => Query::Explain {
                 root: input,
-
                 max_depth: *max_depth,
-
                 roles: roles.clone(),
             },
-
             QueryTemplate::Traverse {
                 direction,
                 relations,
                 max_depth,
             } => Query::Traverse {
                 roots: BTreeSet::from([input]),
-
                 direction: *direction,
-
                 relations: relations.clone(),
-
                 max_depth: *max_depth,
-
                 predicate: Predicate::Any,
             },
         })
@@ -1904,17 +1708,13 @@ fn retention_transition<M: Model>(
 ) -> Option<RetentionTransition<M>> {
     match (before, after) {
         (None, None) => None,
-
         (None, Some(strength)) => Some(RetentionTransition::BecameRequired { resource, strength }),
-
         (Some(previous), None) => {
             Some(RetentionTransition::BecameUnrequired { resource, previous })
         }
-
         (Some(from), Some(to)) if to > from => {
             Some(RetentionTransition::Strengthened { resource, from, to })
         }
-
         (Some(from), Some(to)) if to < from => {
             Some(RetentionTransition::Weakened { resource, from, to })
         }
@@ -1936,7 +1736,6 @@ fn retention_is_prepare<M: Model>(transition: &RetentionTransition<M>) -> bool {
 
 fn apply_operation<M: Model>(
     projection: &mut Projection<M>,
-
     operation: &Operation<M>,
 ) -> Result<()> {
     for fact in &operation.facts {
@@ -1960,7 +1759,6 @@ fn apply_operation<M: Model>(
 
         if let Some(event) = operation.facts.iter().find_map(|fact| match fact {
             Fact::EventRecorded(event) => Some(event.id.clone()),
-
             _ => None,
         }) {
             projection
@@ -1974,9 +1772,7 @@ fn apply_operation<M: Model>(
 
 fn apply_fact<M: Model>(
     projection: &mut Projection<M>,
-
     operation_id: &OperationId<M>,
-
     fact: &Fact<M>,
 ) -> Result<()> {
     match fact {
@@ -1985,13 +1781,11 @@ fn apply_fact<M: Model>(
                 .schemas
                 .declare(schema.key.clone(), schema.clone())?;
         }
-
         Fact::NamedQueryRegistered(query) => {
             projection
                 .named_queries
                 .declare(query.key.clone(), query.clone())?;
         }
-
         Fact::SourceAnchored(anchor) => match projection.source_to_operation.get(&anchor.source) {
             None => {
                 projection
@@ -2005,65 +1799,49 @@ fn apply_fact<M: Model>(
                 return Err(Error::SourceAlreadyMappedDifferently);
             }
         },
-
         Fact::SessionOpened(session) => {
             projection
                 .sessions
                 .declare(session.id.clone(), session.clone())?;
         }
-
         Fact::SessionEnded { session } => {
             projection.require_session(session)?;
-
             projection.ended_sessions.insert(session.clone());
         }
-
         Fact::ActorDeclared(actor) => {
             projection.actors.declare(actor.id.clone(), actor.clone())?;
         }
-
         Fact::ObjectDeclared(object) => {
             projection
                 .objects
                 .declare(object.id.clone(), object.clone())?;
         }
-
         Fact::EntityObserved(observation) => {
             validate_entity_observation_schema(projection, observation)?;
-
             projection
                 .entities
                 .set(observation.entity.clone(), observation.clone());
-
             projection
                 .entity_history
                 .insert(observation.entity.clone(), operation_id.clone());
         }
-
         Fact::EventRecorded(event) => {
             match projection.events.declare(event.id.clone(), event.clone())? {
                 DeclareOutcome::Inserted => {
                     for parent in &event.parents {
                         projection.event_heads.remove(parent);
                     }
-
                     projection.event_heads.insert(event.id.clone());
-
                     for relation in &event.relations {
                         validate_relation(projection, relation)?;
-
                         let edge = GraphEdge {
                             relation: relation.clone(),
-
                             event: event.id.clone(),
-
                             operation: operation_id.clone(),
                         };
-
                         projection
                             .outgoing
                             .insert(relation.from.clone(), edge.clone());
-
                         projection.incoming.insert(relation.to.clone(), edge);
                     }
                 }
@@ -2123,9 +1901,7 @@ fn topological_operations<M: Model>(
     operations: &Ledger<OperationId<M>, Operation<M>>,
 ) -> Result<Vec<&Operation<M>>> {
     let mut indegree = BTreeMap::<OperationId<M>, usize>::new();
-
     let mut children = BTreeMap::<OperationId<M>, BTreeSet<OperationId<M>>>::new();
-
     for id in operations.keys() {
         indegree.insert(id.clone(), 0);
     }
@@ -2137,7 +1913,6 @@ fn topological_operations<M: Model>(
             }
 
             *indegree.get_mut(&operation.id).unwrap() += 1;
-
             children
                 .entry(parent.clone())
                 .or_default()
@@ -2146,7 +1921,6 @@ fn topological_operations<M: Model>(
     }
 
     let mut queue = VecDeque::new();
-
     for (id, degree) in &indegree {
         if *degree == 0 {
             queue.push_back(id.clone());
@@ -2154,16 +1928,12 @@ fn topological_operations<M: Model>(
     }
 
     let mut ordered = Vec::new();
-
     while let Some(id) = queue.pop_front() {
         ordered.push(id.clone());
-
         if let Some(children) = children.get(&id) {
             for child in children {
                 let degree = indegree.get_mut(child).unwrap();
-
                 *degree -= 1;
-
                 if *degree == 0 {
                     queue.push_back(child.clone());
                 }
@@ -2185,7 +1955,6 @@ fn compute_operation_heads<M: Model>(
     operations: &Ledger<OperationId<M>, Operation<M>>,
 ) -> Set<OperationId<M>> {
     let mut heads = Set::default();
-
     for id in operations.keys() {
         heads.insert(id.clone());
     }
@@ -2213,9 +1982,7 @@ pub enum Direction {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RelationSelector {
     Any,
-
     Types(BTreeSet<RelationType>),
-
     /// Follow only relations whose schemas declare explanation semantics.
     Explanatory,
 }
@@ -2227,15 +1994,10 @@ pub enum RelationSelector {
 ))]
 pub enum Predicate<M: Model> {
     Any,
-
     EntityType(EntityTypePattern),
-
     PropertyEquals { field: FieldName, value: Value<M> },
-
     And(Vec<Predicate<M>>),
-
     Or(Vec<Predicate<M>>),
-
     Not(Box<Predicate<M>>),
 }
 
@@ -2248,31 +2010,22 @@ pub enum Query<M: Model> {
     Lookup {
         entity: EntityRef<M>,
     },
-
     History {
         entity: EntityRef<M>,
     },
-
     Traverse {
         roots: BTreeSet<EntityRef<M>>,
-
         direction: Direction,
-
         relations: RelationSelector,
-
         max_depth: Option<usize>,
-
         predicate: Predicate<M>,
     },
-
     /// Generic `why`.
     ///
     /// Its behavior is driven by schema-declared ExplanationSemantics.
     Explain {
         root: EntityRef<M>,
-
         max_depth: Option<usize>,
-
         roles: BTreeSet<ExplanationRole>,
     },
 }
@@ -2284,11 +2037,8 @@ pub enum Query<M: Model> {
 ))]
 pub struct QueryResult<M: Model> {
     pub entities: BTreeSet<EntityRef<M>>,
-
     pub edges: BTreeSet<GraphEdge<M>>,
-
     pub events: BTreeSet<EventId<M>>,
-
     pub operations: BTreeSet<OperationId<M>>,
 }
 
@@ -2296,11 +2046,8 @@ impl<M: Model> Default for QueryResult<M> {
     fn default() -> Self {
         Self {
             entities: BTreeSet::new(),
-
             edges: BTreeSet::new(),
-
             events: BTreeSet::new(),
-
             operations: BTreeSet::new(),
         }
     }
@@ -2315,14 +2062,11 @@ impl<M: Model> State<M> {
         match query {
             Query::Lookup { entity } => {
                 let mut result = QueryResult::default();
-
                 result.entities.insert(entity.clone());
-
                 Ok(result)
             }
 
             Query::History { entity } => self.query_history(entity),
-
             Query::Traverse {
                 roots,
                 direction,
@@ -2330,7 +2074,6 @@ impl<M: Model> State<M> {
                 max_depth,
                 predicate,
             } => self.query_traverse(roots, *direction, relations, *max_depth, predicate),
-
             Query::Explain {
                 root,
                 max_depth,
@@ -2341,9 +2084,7 @@ impl<M: Model> State<M> {
 
     fn query_history(&self, entity: &EntityRef<M>) -> Result<QueryResult<M>> {
         let mut result = QueryResult::default();
-
         result.entities.insert(entity.clone());
-
         if let EntityRef::External(address) = entity
             && let Some(operations) = self.projection.entity_history.get(address)
         {
@@ -2352,12 +2093,10 @@ impl<M: Model> State<M> {
 
         for event in self.projection.events.values() {
             let touches_subject = event.subjects.contains(entity);
-
             let touches_relation = event
                 .relations
                 .iter()
                 .any(|relation| &relation.from == entity || &relation.to == entity);
-
             if touches_subject || touches_relation {
                 result.events.insert(event.id.clone());
             }
@@ -2379,21 +2118,14 @@ impl<M: Model> State<M> {
     fn query_traverse(
         &self,
         roots: &BTreeSet<EntityRef<M>>,
-
         direction: Direction,
-
         relations: &RelationSelector,
-
         max_depth: Option<usize>,
-
         predicate: &Predicate<M>,
     ) -> Result<QueryResult<M>> {
         let mut result = QueryResult::default();
-
         let mut visited = BTreeSet::new();
-
         let mut queue = VecDeque::new();
-
         for root in roots {
             queue.push_back((root.clone(), 0usize));
         }
@@ -2412,24 +2144,18 @@ impl<M: Model> State<M> {
             }
 
             let edges = self.edges_for(&entity, direction);
-
             for edge in edges {
                 if !relation_selected(&self.projection, &edge.relation, relations)? {
                     continue;
                 }
 
                 let next = traversal_other_end(&entity, &edge.relation, direction);
-
                 let Some(next) = next else {
                     continue;
                 };
-
                 result.edges.insert(edge.clone());
-
                 result.events.insert(edge.event.clone());
-
                 result.operations.insert(edge.operation.clone());
-
                 queue.push_back((next, depth + 1));
             }
         }
@@ -2440,32 +2166,24 @@ impl<M: Model> State<M> {
     fn query_explain(
         &self,
         root: &EntityRef<M>,
-
         max_depth: Option<usize>,
-
         roles: &BTreeSet<ExplanationRole>,
     ) -> Result<QueryResult<M>> {
         let mut result = QueryResult::default();
-
         let mut visited = BTreeSet::new();
-
         let mut queue = VecDeque::new();
-
         queue.push_back((root.clone(), 0usize));
-
         while let Some((entity, depth)) = queue.pop_front() {
             if !visited.insert(entity.clone()) {
                 continue;
             }
 
             result.entities.insert(entity.clone());
-
             if max_depth.is_some_and(|max| depth >= max) {
                 continue;
             }
 
             let mut candidate_edges = Vec::new();
-
             if let Some(edges) = self.projection.outgoing.get(&entity) {
                 candidate_edges.extend(edges.iter());
             }
@@ -2476,27 +2194,20 @@ impl<M: Model> State<M> {
 
             for edge in candidate_edges {
                 let relation_schema = find_relation_schema(&self.projection, &edge.relation)?;
-
                 let Some(explanation) = relation_schema.explanation else {
                     continue;
                 };
-
                 if !roles.is_empty() && !roles.contains(&explanation.role) {
                     continue;
                 }
 
                 let next = explanation_predecessor(&entity, &edge.relation, explanation.direction);
-
                 let Some(next) = next else {
                     continue;
                 };
-
                 result.edges.insert(edge.clone());
-
                 result.events.insert(edge.event.clone());
-
                 result.operations.insert(edge.operation.clone());
-
                 queue.push_back((next, depth + 1));
             }
         }
@@ -2506,7 +2217,6 @@ impl<M: Model> State<M> {
 
     fn edges_for(&self, entity: &EntityRef<M>, direction: Direction) -> Vec<GraphEdge<M>> {
         let mut result = BTreeSet::new();
-
         if matches!(direction, Direction::Outgoing | Direction::Both)
             && let Some(edges) = self.projection.outgoing.get(entity)
         {
@@ -2525,16 +2235,12 @@ impl<M: Model> State<M> {
 
 fn relation_selected<M: Model>(
     projection: &Projection<M>,
-
     relation: &Relation<M>,
-
     selector: &RelationSelector,
 ) -> Result<bool> {
     match selector {
         RelationSelector::Any => Ok(true),
-
         RelationSelector::Types(types) => Ok(types.contains(&relation.relation_type)),
-
         RelationSelector::Explanatory => Ok(find_relation_schema(projection, relation)?
             .explanation
             .is_some()),
@@ -2543,80 +2249,60 @@ fn relation_selected<M: Model>(
 
 fn traversal_other_end<M: Model>(
     current: &EntityRef<M>,
-
     relation: &Relation<M>,
-
     direction: Direction,
 ) -> Option<EntityRef<M>> {
     match direction {
         Direction::Outgoing if &relation.from == current => Some(relation.to.clone()),
-
         Direction::Incoming if &relation.to == current => Some(relation.from.clone()),
-
         Direction::Both if &relation.from == current => Some(relation.to.clone()),
-
         Direction::Both if &relation.to == current => Some(relation.from.clone()),
-
         _ => None,
     }
 }
 
 fn explanation_predecessor<M: Model>(
     current: &EntityRef<M>,
-
     relation: &Relation<M>,
-
     direction: ExplanationDirection,
 ) -> Option<EntityRef<M>> {
     match direction {
         ExplanationDirection::FromExplainedByTo if &relation.from == current => {
             Some(relation.to.clone())
         }
-
         ExplanationDirection::ToExplainedByFrom if &relation.to == current => {
             Some(relation.from.clone())
         }
-
         ExplanationDirection::Symmetric if &relation.from == current => Some(relation.to.clone()),
-
         ExplanationDirection::Symmetric if &relation.to == current => Some(relation.from.clone()),
-
         _ => None,
     }
 }
 
 fn predicate_matches<M: Model>(
     projection: &Projection<M>,
-
     entity: &EntityRef<M>,
-
     predicate: &Predicate<M>,
 ) -> bool {
     match predicate {
         Predicate::Any => true,
-
         Predicate::EntityType(expected) => matches_entity_type(entity, expected),
-
         Predicate::PropertyEquals { field, value } => {
             let EntityRef::External(address) = entity else {
                 return false;
             };
-
             projection
                 .entities
                 .get(address)
                 .and_then(|observation| observation.attributes.get(field))
                 == Some(value)
         }
-
         Predicate::And(predicates) => predicates
             .iter()
             .all(|predicate| predicate_matches(projection, entity, predicate)),
-
         Predicate::Or(predicates) => predicates
             .iter()
             .any(|predicate| predicate_matches(projection, entity, predicate)),
-
         Predicate::Not(predicate) => !predicate_matches(projection, entity, predicate),
     }
 }
@@ -2636,9 +2322,7 @@ fn predicate_matches<M: Model>(
 pub trait Adapter<M: Model> {
     type Input;
     type Error;
-
     fn transaction(&self, input: Self::Input) -> std::result::Result<Transaction<M>, Self::Error>;
-
     fn core_error(&self, error: Error) -> Self::Error;
 }
 
@@ -2646,9 +2330,7 @@ pub trait AdapterExt<M: Model>: Adapter<M> {
     fn plan<I, R>(
         &self,
         kernel: &Kernel<M, I, R>,
-
         state: &State<M>,
-
         input: Self::Input,
     ) -> std::result::Result<CommitPlan<M>, Self::Error>
     where
@@ -2656,7 +2338,6 @@ pub trait AdapterExt<M: Model>: Adapter<M> {
         R: Rules<M>,
     {
         let transaction = self.transaction(input)?;
-
         kernel
             .transact(state, transaction)
             .map_err(|error| self.core_error(error))
@@ -2690,22 +2371,15 @@ pub enum PublishOutcome {
 /// may be rebuilt from this interface and must not replace it as authority.
 pub trait ProvenanceStore<M: Model> {
     type Error;
-
     fn get_operation(
         &self,
         id: &OperationId<M>,
     ) -> std::result::Result<Option<Operation<M>>, Self::Error>;
-
     fn has_operation(&self, id: &OperationId<M>) -> std::result::Result<bool, Self::Error>;
-
     fn put_operation(&mut self, operation: &Operation<M>) -> std::result::Result<(), Self::Error>;
-
     fn get_object(&self, id: &ObjectId<M>) -> std::result::Result<Option<Object<M>>, Self::Error>;
-
     fn put_object(&mut self, object: &Object<M>) -> std::result::Result<(), Self::Error>;
-
     fn heads(&self) -> std::result::Result<BTreeSet<OperationId<M>>, Self::Error>;
-
     fn publish_heads(
         &mut self,
         expected: &BTreeSet<OperationId<M>>,
@@ -2729,18 +2403,13 @@ pub trait ProvenanceStore<M: Model> {
 /// Core itself remains pure.
 pub trait Runtime<M: Model> {
     type Error;
-
     /// Idempotently establish prerequisite.
     fn prepare(
         &mut self,
         requirement: &PrepareRequirement<M>,
     ) -> std::result::Result<(), Self::Error>;
-
-    /// Atomically publish immutable provenance Operation.
-    ///
-    /// Same operation twice must be harmless.
+    /// Atomically publish immutable provenance Operation. Same operation twice must be harmless.
     fn publish(&mut self, operation: &Operation<M>) -> std::result::Result<(), Self::Error>;
-
     /// Idempotent post-publication reconciliation.
     fn finalize(&mut self, action: &FinalizeAction<M>) -> std::result::Result<(), Self::Error>;
 }
@@ -2758,26 +2427,17 @@ where
     RT: Runtime<M>,
 {
     pub kernel: Kernel<M, I, R>,
-
     pub adapter: A,
-
     pub runtime: RT,
-
     pub state: State<M>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProcessError<A, R> {
     Adapter(A),
-
     Prepare(R),
-
     Publish(R),
-
-    /// IMPORTANT:
-    ///
-    /// Operation is already authoritative when this is returned.
-    /// Caller state has already advanced.
+    /// IMPORTANT: Operation is already authoritative when this is returned. Caller state has already advanced.
     Finalize(R),
 }
 
@@ -2797,7 +2457,6 @@ where
             .adapter
             .plan(&self.kernel, &self.state, input)
             .map_err(ProcessError::Adapter)?;
-
         if plan.idempotent {
             return Ok(());
         }
@@ -2829,7 +2488,6 @@ where
         // ---------------------------------------------------------------------
 
         self.state = plan.next_state;
-
         // ---------------------------------------------------------------------
         // FINALIZE
         //
@@ -2860,13 +2518,11 @@ where
 /// They must return equivalent semantic results.
 pub trait QueryEngine<M: Model> {
     type Error;
-
     fn execute(&self, query: &Query<M>) -> std::result::Result<QueryResult<M>, Self::Error>;
 }
 
 impl<M: Model> QueryEngine<M> for State<M> {
     type Error = Error;
-
     fn execute(&self, query: &Query<M>) -> Result<QueryResult<M>> {
         self.query(query)
     }
