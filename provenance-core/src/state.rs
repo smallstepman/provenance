@@ -220,6 +220,9 @@ where
             }
         }
     }
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &BTreeSet<V>)> {
+        self.inner.iter()
+    }
 }
 
 // =============================================================================
