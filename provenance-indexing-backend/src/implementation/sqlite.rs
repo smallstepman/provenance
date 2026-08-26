@@ -4,12 +4,16 @@ use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
+use db::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+#[cfg(feature = "doltlite")]
+use doltlite as db;
 use postcard::Error as PostcardError;
 use provenance_core::{
     EntityObservation, EntityRef, EventId, Fact, GraphEdge, Model, Operation, OperationId,
     SchemaDefinition, SchemaKey, State,
 };
-use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+#[cfg(feature = "sqlite")]
+use rusqlite as db;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use thiserror::Error;
@@ -87,7 +91,7 @@ CREATE INDEX IF NOT EXISTS event_entity_entity_idx ON event_entity_index(entity_
 #[derive(Debug, Error)]
 pub enum SqliteStorageError {
     #[error("SQLite projection storage error: {0}")]
-    Sql(#[from] rusqlite::Error),
+    Sql(#[from] db::Error),
     #[error("could not create SQLite projection directory: {0}")]
     Io(#[from] std::io::Error),
     #[error("could not encode indexed value: {0}")]
@@ -147,6 +151,22 @@ where
         Ok(())
     }
 
+    fn apply_delta(
+        &mut self,
+        operations: &[Operation<M>],
+        _state: &State<M>,
+    ) -> Result<(), Self::Error> {
+        if operations.is_empty() {
+            return Ok(());
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        write_operation_delta(&transaction, operations)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     fn clear(&mut self) -> Result<(), Self::Error> {
         let transaction = self
             .connection
@@ -161,6 +181,19 @@ where
             self.connection
                 .query_row("SELECT COUNT(*) FROM operation_index", [], |row| row.get(0))?;
         Ok(count as usize)
+    }
+
+    fn indexed_operations(&self) -> Result<Vec<Operation<M>>, Self::Error> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT operation FROM operation_index")?;
+        let mut rows = statement.query([])?;
+        let mut operations = Vec::new();
+        while let Some(row) = rows.next()? {
+            let blob: Vec<u8> = row.get(0)?;
+            operations.push(decode(&blob)?);
+        }
+        Ok(operations)
     }
 
     fn contains(&self, operation_id: &OperationId<M>) -> Result<bool, Self::Error> {
@@ -253,10 +286,10 @@ where
                 .query_map(params![entity_key, entity_key], |row| {
                     row.get::<_, Vec<u8>>(0)
                 })?
-                .collect::<rusqlite::Result<Vec<_>>>()?,
+                .collect::<db::Result<Vec<_>>>()?,
             _ => statement
                 .query_map(params![entity_key], |row| row.get::<_, Vec<u8>>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?,
+                .collect::<db::Result<Vec<_>>>()?,
         };
         blobs.iter().map(|blob| decode(blob)).collect()
     }
@@ -362,6 +395,14 @@ where
         T::Error: std::fmt::Display,
     {
         self.inner.rebuild_from(store)
+    }
+
+    fn update_from<T>(&mut self, store: &T) -> Result<(), Self::Error>
+    where
+        T: provenance_core::ProvenanceStore<M>,
+        T::Error: std::fmt::Display,
+    {
+        self.inner.update_from(store)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
@@ -495,6 +536,121 @@ where
                     encode(edge)?
                 ],
             )?;
+        }
+    }
+    Ok(())
+}
+
+fn write_operation_delta<M>(
+    transaction: &Transaction<'_>,
+    operations: &[Operation<M>],
+) -> Result<(), SqliteStorageError>
+where
+    M: IndexModel,
+    M::Id: Serialize + DeserializeOwned,
+    M::Seed: Serialize + DeserializeOwned,
+    M::ExternalId: Serialize + DeserializeOwned,
+    M::Payload: Serialize + DeserializeOwned,
+{
+    for operation in operations {
+        let operation_id = encode(&operation.id)?;
+        let operation_blob = encode(operation)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO operation_index(operation_id, operation, parent_count) \
+             VALUES (?1, ?2, ?3)",
+            params![
+                &operation_id,
+                &operation_blob,
+                operation.parents.len() as i64
+            ],
+        )?;
+        for parent_id in &operation.parents {
+            transaction.execute(
+                "INSERT OR IGNORE INTO operation_parent_index(operation_id, parent_id) \
+                 VALUES (?1, ?2)",
+                params![&operation_id, encode(parent_id)?],
+            )?;
+        }
+
+        if let Some(source) = &operation.source {
+            transaction.execute(
+                "INSERT OR IGNORE INTO source_index(source, operation_id) VALUES (?1, ?2)",
+                params![encode(source)?, &operation_id],
+            )?;
+        }
+
+        for fact in &operation.facts {
+            match fact {
+                Fact::SchemaRegistered(schema) => {
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO schema_index(schema_key, schema) VALUES (?1, ?2)",
+                        params![encode(&schema.key)?, encode(schema)?],
+                    )?;
+                }
+                Fact::NamedQueryRegistered(query) => {
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO named_query_index(query_key, query) VALUES (?1, ?2)",
+                        params![encode(&query.key)?, encode(query)?],
+                    )?;
+                }
+                Fact::SourceAnchored(anchor) => {
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO source_index(source, operation_id) VALUES (?1, ?2)",
+                        params![encode(&anchor.source)?, encode(&anchor.operation)?],
+                    )?;
+                }
+                Fact::EntityObserved(observation) => {
+                    let entity = EntityRef::External(observation.entity.clone());
+                    let entity_key = encode(&entity)?;
+                    transaction.execute(
+                        "INSERT OR REPLACE INTO entity_index(entity_key, observation) \
+                         VALUES (?1, ?2)",
+                        params![&entity_key, encode(observation)?],
+                    )?;
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO entity_history_index(entity_key, operation_id) \
+                         VALUES (?1, ?2)",
+                        params![&entity_key, &operation_id],
+                    )?;
+                }
+                Fact::EventRecorded(event) => {
+                    let event_id = encode(&event.id)?;
+                    transaction.execute(
+                        "INSERT OR IGNORE INTO event_index(event_id, event, operation_id) \
+                         VALUES (?1, ?2, ?3)",
+                        params![&event_id, encode(event)?, &operation_id],
+                    )?;
+                    let mut entities = event.subjects.clone();
+                    for relation in &event.relations {
+                        entities.insert(relation.from.clone());
+                        entities.insert(relation.to.clone());
+                        let edge = GraphEdge {
+                            relation: relation.clone(),
+                            event: event.id.clone(),
+                            operation: operation.id.clone(),
+                        };
+                        let edge_key = encode(&edge)?;
+                        transaction.execute(
+                            "INSERT OR IGNORE INTO graph_edge_index \
+                             (edge_key, from_key, to_key, edge) VALUES (?1, ?2, ?3, ?4)",
+                            params![
+                                &edge_key,
+                                encode(&relation.from)?,
+                                encode(&relation.to)?,
+                                encode(&edge)?
+                            ],
+                        )?;
+                    }
+                    for entity in entities {
+                        transaction.execute(
+                            "INSERT OR IGNORE INTO event_entity_index(event_id, entity_key) \
+                             VALUES (?1, ?2)",
+                            params![&event_id, encode(&entity)?],
+                        )?;
+                    }
+                }
+                _ => {}
+            }
         }
     }
     Ok(())

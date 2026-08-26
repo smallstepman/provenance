@@ -525,6 +525,35 @@ impl<M: Model> State<M> {
         self.operation_heads = operation_heads;
         Ok(())
     }
+
+    /// Apply one already-validated operation without rebuilding the full DAG.
+    ///
+    /// The operation must be presented after all of its parents. This is the
+    /// primitive used by incremental projection indexes; `rebuild` remains the
+    /// authoritative recovery path for arbitrary operation order.
+    pub fn apply_operation(&mut self, operation: Operation<M>) -> Result<()> {
+        if let Some(existing) = self.operations.get(&operation.id) {
+            if existing == &operation {
+                return Ok(());
+            }
+            return Err(Error::IdentityCollision);
+        }
+
+        for parent in &operation.parents {
+            if !self.operations.contains(parent) {
+                return Err(Error::MissingOperationParent);
+            }
+        }
+
+        apply_operation(&mut self.projection, &operation)?;
+        let operation_id = operation.id.clone();
+        self.operations.declare(operation.id.clone(), operation)?;
+        for parent in &self.operations.get(&operation_id).unwrap().parents {
+            self.operation_heads.remove(parent);
+        }
+        self.operation_heads.insert(operation_id);
+        Ok(())
+    }
 }
 
 // =============================================================================
