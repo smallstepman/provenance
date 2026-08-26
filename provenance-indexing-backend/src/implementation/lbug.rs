@@ -748,6 +748,17 @@ where
                 }
                 Fact::EventRecorded(event) => {
                     let event_key = encode_key(&event.id)?;
+                    if !query_strings(
+                        connection,
+                        &format!(
+                            "MATCH (n:event_index) WHERE n.event_id = {} RETURN n.event_id;",
+                            literal(&event_key)
+                        ),
+                    )?
+                    .is_empty()
+                    {
+                        continue;
+                    }
                     create_node(
                         connection,
                         "event_index",

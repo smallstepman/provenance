@@ -693,6 +693,16 @@ where
                 }
                 Fact::EventRecorded(event) => {
                     let event_id = encode(&event.id)?;
+                    if read_optional_blob(
+                        connection,
+                        "SELECT event FROM event_index WHERE event_id = ?1",
+                        [event_id.clone()],
+                    )
+                    .await?
+                    .is_some()
+                    {
+                        continue;
+                    }
                     connection
                         .execute(
                             "INSERT OR IGNORE INTO event_index(event_id, event, operation_id) VALUES (?1, ?2, ?3)",
