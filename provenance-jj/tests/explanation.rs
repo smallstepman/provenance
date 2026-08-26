@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use provenance_core::{
     EntityKind, EntityObservation, EntityRef, EntitySchema, EntityType, EntityTypePattern,
     ExplanationDirection, ExplanationRole, ExplanationSemantics, FieldName, FieldSchema, Intent,
-    Namespace, Relation, RelationName, RelationSchema, RelationType, SchemaDefinition, SchemaKey,
-    SchemaVersion, Transaction, Value, ValueType,
+    Relation, RelationName, RelationSchema, RelationType, SchemaDefinition, SchemaKey, Transaction,
+    Value, ValueType,
 };
 
 use provenance_jj::{compile_why, external, jj_commit, why_jj_commit};
@@ -59,10 +59,7 @@ fn generic_why_crosses_external_tracker_relation() {
     let tracker = tracker_task("123");
     let relation = Relation {
         schema: tracker_schema.key.clone(),
-        relation_type: RelationType {
-            namespace: Namespace::from("tracker"),
-            name: RelationName::from("implemented-by"),
-        },
+        relation_type: RelationType::new("tracker", "implemented-by"),
         from: tracker.clone(),
         to: jj_commit(&commit_id),
         attributes: BTreeMap::new(),
@@ -77,10 +74,7 @@ fn generic_why_crosses_external_tracker_relation() {
                     EntityRef::External(address) => address.clone(),
                     EntityRef::Internal(_) => unreachable!(),
                 },
-                schema: SchemaKey {
-                    namespace: Namespace::from("tracker"),
-                    version: SchemaVersion::from("1"),
-                },
+                schema: SchemaKey::new("tracker", "1"),
                 attributes: BTreeMap::from([(
                     FieldName::from("task_id"),
                     Value::String("123".into()),
@@ -112,55 +106,37 @@ fn generic_why_crosses_external_tracker_relation() {
 }
 
 fn tracker_task(id: &str) -> EntityRef<provenance_jj::JjModel> {
-    external(provenance_core::EntityAddress {
-        namespace: Namespace::from("tracker"),
-        kind: EntityKind::from("task"),
-        id: id.to_owned(),
-    })
+    external(provenance_core::EntityAddress::new(
+        "tracker",
+        "task",
+        id.to_owned(),
+    ))
 }
 
 fn tracker_schema() -> SchemaDefinition {
-    let tracker_task_type = EntityType {
-        namespace: Namespace::from("tracker"),
-        kind: EntityKind::from("task"),
-    };
+    let tracker_task_type = EntityType::new("tracker", "task");
     SchemaDefinition {
-        key: SchemaKey {
-            namespace: Namespace::from("tracker"),
-            version: SchemaVersion::from("1"),
-        },
+        key: SchemaKey::new("tracker", "1"),
         requires: BTreeSet::new(),
         entities: BTreeMap::from([(
             EntityKind::from("task"),
-            EntitySchema {
-                entity_type: tracker_task_type.clone(),
-                fields: BTreeMap::from([(
-                    FieldName::from("task_id"),
-                    FieldSchema {
-                        value_type: ValueType::String,
-                        required: true,
-                    },
-                )]),
-                allow_unknown_fields: false,
-            },
+            EntitySchema::new(
+                tracker_task_type.clone(),
+                [("task_id", FieldSchema::required(ValueType::String))],
+                false,
+            ),
         )]),
         relations: BTreeMap::from([(
             RelationName::from("implemented-by"),
-            RelationSchema {
-                relation_type: RelationType {
-                    namespace: Namespace::from("tracker"),
-                    name: RelationName::from("implemented-by"),
-                },
-                from: EntityTypePattern::External(tracker_task_type),
-                to: EntityTypePattern::External(EntityType {
-                    namespace: Namespace::from(provenance_jj::JJ_NAMESPACE),
-                    kind: EntityKind::from("commit"),
-                }),
-                explanation: Some(ExplanationSemantics {
-                    role: ExplanationRole::Primary,
-                    direction: ExplanationDirection::ToExplainedByFrom,
-                }),
-            },
+            RelationSchema::new(
+                RelationType::new("tracker", "implemented-by"),
+                EntityTypePattern::External(tracker_task_type),
+                EntityTypePattern::External(EntityType::new(provenance_jj::JJ_NAMESPACE, "commit")),
+                Some(ExplanationSemantics::new(
+                    ExplanationRole::Primary,
+                    ExplanationDirection::ToExplainedByFrom,
+                )),
+            ),
         )]),
     }
 }

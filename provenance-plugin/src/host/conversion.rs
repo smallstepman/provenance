@@ -3,12 +3,11 @@ use std::collections::BTreeMap;
 use provenance_core::{
     ActorId, Attributes, Availability, ClaimId, Direction, EntityAddress, EntityKind,
     EntityObservation, EntityRef, EntitySchema, EntityType, EntityTypePattern, EventId,
-    EventIntent, ExplanationDirection, ExplanationRole, FieldName, FieldSchema, Integrity, Intent,
-    InternalEntityKind, InternalEntityRef, Namespace, ObjectId, OperationId, QueryKey,
-    QueryTemplate, Relation, RelationName, RelationSchema, RelationSelector, RelationType,
+    EventIntent, ExplanationDirection, ExplanationRole, ExplanationSemantics, FieldName,
+    FieldSchema, Integrity, Intent, InternalEntityKind, InternalEntityRef, Namespace, ObjectId,
+    OperationId, QueryKey, QueryTemplate, Relation, RelationSchema, RelationSelector, RelationType,
     ReplicaId, Resource, ResourceObservation, ResourceRequirement, RetentionStrength,
-    SchemaDefinition, SchemaKey, SchemaVersion, SessionId, SourceOperation, Transaction, Value,
-    ValueType,
+    SchemaDefinition, SchemaKey, SessionId, SourceOperation, Transaction, Value, ValueType,
 };
 use provenance_data_model::{NodeRef, NodeType};
 
@@ -54,18 +53,11 @@ pub fn source_operation(
 }
 
 pub fn address(address: bindings::EntityAddress) -> EntityAddress<PluginModel> {
-    EntityAddress {
-        namespace: Namespace::from(address.namespace),
-        kind: EntityKind::from(address.kind),
-        id: address.id,
-    }
+    EntityAddress::new(address.namespace, address.kind, address.id)
 }
 
 fn entity_type(value: bindings::EntityType) -> EntityType {
-    EntityType {
-        namespace: Namespace::from(value.namespace),
-        kind: EntityKind::from(value.kind),
-    }
+    EntityType::new(value.namespace, value.kind)
 }
 
 fn entity_type_pattern(pattern: bindings::EntityTypePattern) -> EntityTypePattern {
@@ -300,46 +292,40 @@ fn entity_schema(
             return Err(ConversionError::DuplicateSchemaEntry(name));
         }
     }
-    Ok(EntitySchema {
-        entity_type: EntityType {
-            namespace: namespace.clone(),
-            kind: EntityKind::from(schema.kind),
-        },
+    Ok(EntitySchema::new(
+        EntityType::new(namespace.clone(), schema.kind),
         fields,
-        allow_unknown_fields: schema.allow_unknown_fields,
-    })
+        schema.allow_unknown_fields,
+    ))
 }
 
-fn explanation(
-    explanation: bindings::ExplanationSemantics,
-) -> provenance_core::ExplanationSemantics {
-    provenance_core::ExplanationSemantics {
-        role: match explanation.role {
-            bindings::ExplanationRole::Primary => ExplanationRole::Primary,
-            bindings::ExplanationRole::Supporting => ExplanationRole::Supporting,
-            bindings::ExplanationRole::Contextual => ExplanationRole::Contextual,
-            bindings::ExplanationRole::Causal => ExplanationRole::Causal,
-            bindings::ExplanationRole::Contradicting => ExplanationRole::Contradicting,
-            bindings::ExplanationRole::Invalidating => ExplanationRole::Invalidating,
-            bindings::ExplanationRole::Attribution => ExplanationRole::Attribution,
-            bindings::ExplanationRole::Influence => ExplanationRole::Influence,
-        },
-        direction: match explanation.direction {
-            bindings::ExplanationDirection::SourceExplainsTarget => {
-                ExplanationDirection::FromExplainedByTo
-            }
-            bindings::ExplanationDirection::TargetExplainsSource => {
-                ExplanationDirection::ToExplainedByFrom
-            }
-            bindings::ExplanationDirection::Symmetric => ExplanationDirection::Symmetric,
-            bindings::ExplanationDirection::SubjectExplainsByObject => {
-                ExplanationDirection::SubjectExplainedByObject
-            }
-            bindings::ExplanationDirection::ObjectExplainsBySubject => {
-                ExplanationDirection::ObjectExplainedBySubject
-            }
-        },
-    }
+fn explanation(explanation: bindings::ExplanationSemantics) -> ExplanationSemantics {
+    let role = match explanation.role {
+        bindings::ExplanationRole::Primary => ExplanationRole::Primary,
+        bindings::ExplanationRole::Supporting => ExplanationRole::Supporting,
+        bindings::ExplanationRole::Contextual => ExplanationRole::Contextual,
+        bindings::ExplanationRole::Causal => ExplanationRole::Causal,
+        bindings::ExplanationRole::Contradicting => ExplanationRole::Contradicting,
+        bindings::ExplanationRole::Invalidating => ExplanationRole::Invalidating,
+        bindings::ExplanationRole::Attribution => ExplanationRole::Attribution,
+        bindings::ExplanationRole::Influence => ExplanationRole::Influence,
+    };
+    let direction = match explanation.direction {
+        bindings::ExplanationDirection::SourceExplainsTarget => {
+            ExplanationDirection::FromExplainedByTo
+        }
+        bindings::ExplanationDirection::TargetExplainsSource => {
+            ExplanationDirection::ToExplainedByFrom
+        }
+        bindings::ExplanationDirection::Symmetric => ExplanationDirection::Symmetric,
+        bindings::ExplanationDirection::SubjectExplainsByObject => {
+            ExplanationDirection::SubjectExplainedByObject
+        }
+        bindings::ExplanationDirection::ObjectExplainsBySubject => {
+            ExplanationDirection::ObjectExplainedBySubject
+        }
+    };
+    ExplanationSemantics::new(role, direction)
 }
 
 fn schema_definition(
@@ -368,12 +354,12 @@ fn schema_definition(
         if relations
             .insert(
                 name.clone(),
-                RelationSchema {
-                    relation_type: relation_type_value,
-                    from: entity_type_pattern(relation.source),
-                    to: entity_type_pattern(relation.target),
-                    explanation: relation.explanation.map(explanation),
-                },
+                RelationSchema::new(
+                    relation_type_value,
+                    entity_type_pattern(relation.source),
+                    entity_type_pattern(relation.target),
+                    relation.explanation.map(explanation),
+                ),
             )
             .is_some()
         {
@@ -393,17 +379,11 @@ fn schema_definition(
 }
 
 fn schema_key(key: bindings::SchemaKey) -> SchemaKey {
-    SchemaKey {
-        namespace: Namespace::from(key.namespace),
-        version: SchemaVersion::from(key.version),
-    }
+    SchemaKey::new(key.namespace, key.version)
 }
 
 fn relation_type(relation: bindings::RelationType) -> RelationType {
-    RelationType {
-        namespace: Namespace::from(relation.namespace),
-        name: RelationName::from(relation.name),
-    }
+    RelationType::new(relation.namespace, relation.name)
 }
 
 fn entity_observation(
@@ -473,11 +453,7 @@ fn named_query(
     query: bindings::NamedQueryDefinition,
 ) -> Result<provenance_core::NamedQueryDefinition, ConversionError> {
     Ok(provenance_core::NamedQueryDefinition {
-        key: QueryKey {
-            namespace: Namespace::from(query.key.namespace),
-            version: SchemaVersion::from(query.key.version),
-            name: provenance_core::QueryName::from(query.key.name),
-        },
+        key: QueryKey::new(query.key.namespace, query.key.version, query.key.name),
         input: entity_type_pattern(query.input),
         template: query_template(query.template)?,
     })

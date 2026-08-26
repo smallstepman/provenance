@@ -15,8 +15,8 @@ use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 use pollster::block_on;
 use provenance_core::{
-    Adapter, Attributes, EntityObservation, EventIntent, FieldName, Intent, Relation, RelationName,
-    RelationType, SourceOperation, Transaction, Value,
+    Adapter, Attributes, EntityObservation, EventIntent, FieldName, Intent, Relation, RelationType,
+    SourceOperation, Transaction, Value,
 };
 use thiserror::Error;
 
@@ -459,10 +459,7 @@ fn jj_relation(
 ) -> Relation<JjModel> {
     Relation {
         schema: jj_schema_key(),
-        relation_type: RelationType {
-            namespace: JJ_NAMESPACE.into(),
-            name: RelationName::from(name),
-        },
+        relation_type: RelationType::new(JJ_NAMESPACE, name),
         from: external(from.into()),
         to: external(to.into()),
         attributes: Attributes::new(),

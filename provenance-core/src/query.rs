@@ -16,6 +16,20 @@ pub struct QueryKey {
     pub name: QueryName,
 }
 
+impl QueryKey {
+    pub fn new(
+        namespace: impl Into<Namespace>,
+        version: impl Into<SchemaVersion>,
+        name: impl Into<QueryName>,
+    ) -> Self {
+        Self {
+            namespace: namespace.into(),
+            version: version.into(),
+            name: name.into(),
+        }
+    }
+}
+
 /// Named queries supplied by an ontology/plugin.
 ///
 /// They still compile to generic kernel queries.

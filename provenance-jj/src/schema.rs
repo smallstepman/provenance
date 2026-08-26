@@ -2,9 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use provenance_core::{
     EntityKind, EntitySchema, EntityType, EntityTypePattern, ExplanationDirection, ExplanationRole,
-    ExplanationSemantics, FieldName, FieldSchema, NamedQueryDefinition, Namespace, QueryKey,
-    QueryName, QueryTemplate, RelationName, RelationSchema, RelationType, SchemaDefinition,
-    SchemaKey, SchemaVersion, ValueType,
+    ExplanationSemantics, FieldSchema, NamedQueryDefinition, QueryKey, QueryTemplate, RelationName,
+    RelationSchema, RelationType, SchemaDefinition, SchemaKey, ValueType,
 };
 
 use crate::{CHANGE_KIND, COMMIT_KIND, JJ_NAMESPACE, OPERATION_KIND, WORKSPACE_KIND};
@@ -13,67 +12,37 @@ pub const JJ_SCHEMA_VERSION: &str = "1";
 pub const WHY_QUERY_NAME: &str = "why";
 
 pub fn jj_schema_key() -> SchemaKey {
-    SchemaKey {
-        namespace: Namespace::from(JJ_NAMESPACE),
-        version: SchemaVersion::from(JJ_SCHEMA_VERSION),
-    }
+    SchemaKey::new(JJ_NAMESPACE, JJ_SCHEMA_VERSION)
 }
 
-fn entity_type(kind: &str) -> EntityType {
-    EntityType {
-        namespace: Namespace::from(JJ_NAMESPACE),
-        kind: EntityKind::from(kind),
-    }
+fn entity_type(kind: impl Into<EntityKind>) -> EntityType {
+    EntityType::new(JJ_NAMESPACE, kind)
 }
 
-fn external_pattern(kind: &str) -> EntityTypePattern {
+fn external_pattern(kind: impl Into<EntityKind>) -> EntityTypePattern {
     EntityTypePattern::External(entity_type(kind))
 }
 
-fn string_field(required: bool) -> FieldSchema {
-    FieldSchema {
-        value_type: ValueType::String,
-        required,
-    }
-}
-
-fn entity_field(kind: &str, required: bool) -> FieldSchema {
-    FieldSchema {
-        value_type: ValueType::Entity(external_pattern(kind)),
-        required,
-    }
-}
-
 fn entity_schema(
-    kind: &str,
+    kind: impl Into<EntityKind>,
     fields: impl IntoIterator<Item = (&'static str, FieldSchema)>,
 ) -> EntitySchema {
-    EntitySchema {
-        entity_type: entity_type(kind),
-        fields: fields
-            .into_iter()
-            .map(|(name, schema)| (FieldName::from(name), schema))
-            .collect(),
-        allow_unknown_fields: false,
-    }
+    EntitySchema::new(entity_type(kind), fields, false)
 }
 
 fn relation(
-    name: &'static str,
-    from: &str,
-    to: &str,
+    name: impl Into<RelationName>,
+    from: impl Into<EntityKind>,
+    to: impl Into<EntityKind>,
     role: ExplanationRole,
     direction: ExplanationDirection,
 ) -> RelationSchema {
-    RelationSchema {
-        relation_type: RelationType {
-            namespace: Namespace::from(JJ_NAMESPACE),
-            name: RelationName::from(name),
-        },
-        from: external_pattern(from),
-        to: external_pattern(to),
-        explanation: Some(ExplanationSemantics { role, direction }),
-    }
+    RelationSchema::new(
+        RelationType::new(JJ_NAMESPACE, name),
+        external_pattern(from),
+        external_pattern(to),
+        Some(ExplanationSemantics::new(role, direction)),
+    )
 }
 
 /// The complete JJ ontology registered by the adapter on first ingestion.
@@ -87,11 +56,11 @@ pub fn jj_schema() -> SchemaDefinition {
                 entity_schema(
                     COMMIT_KIND,
                     [
-                        ("commit_id", string_field(true)),
-                        ("change_id", string_field(true)),
-                        ("description", string_field(true)),
-                        ("author", string_field(true)),
-                        ("timestamp", string_field(true)),
+                        ("commit_id", FieldSchema::required(ValueType::String)),
+                        ("change_id", FieldSchema::required(ValueType::String)),
+                        ("description", FieldSchema::required(ValueType::String)),
+                        ("author", FieldSchema::required(ValueType::String)),
+                        ("timestamp", FieldSchema::required(ValueType::String)),
                     ],
                 ),
             ),
@@ -100,8 +69,11 @@ pub fn jj_schema() -> SchemaDefinition {
                 entity_schema(
                     CHANGE_KIND,
                     [
-                        ("change_id", string_field(true)),
-                        ("current_commit", entity_field(COMMIT_KIND, true)),
+                        ("change_id", FieldSchema::required(ValueType::String)),
+                        (
+                            "current_commit",
+                            FieldSchema::required(ValueType::Entity(external_pattern(COMMIT_KIND))),
+                        ),
                     ],
                 ),
             ),
@@ -110,14 +82,17 @@ pub fn jj_schema() -> SchemaDefinition {
                 entity_schema(
                     OPERATION_KIND,
                     [
-                        ("operation_id", string_field(true)),
-                        ("description", string_field(true)),
+                        ("operation_id", FieldSchema::required(ValueType::String)),
+                        ("description", FieldSchema::required(ValueType::String)),
                     ],
                 ),
             ),
             (
                 EntityKind::from(WORKSPACE_KIND),
-                entity_schema(WORKSPACE_KIND, [("workspace_id", string_field(true))]),
+                entity_schema(
+                    WORKSPACE_KIND,
+                    [("workspace_id", FieldSchema::required(ValueType::String))],
+                ),
             ),
         ]),
         relations: BTreeMap::from([
@@ -187,11 +162,7 @@ pub fn jj_schema() -> SchemaDefinition {
 
 pub fn jj_why_query() -> NamedQueryDefinition {
     NamedQueryDefinition {
-        key: QueryKey {
-            namespace: Namespace::from(JJ_NAMESPACE),
-            version: SchemaVersion::from(JJ_SCHEMA_VERSION),
-            name: QueryName::from(WHY_QUERY_NAME),
-        },
+        key: QueryKey::new(JJ_NAMESPACE, JJ_SCHEMA_VERSION, WHY_QUERY_NAME),
         input: external_pattern(COMMIT_KIND),
         template: QueryTemplate::Explain {
             max_depth: None,

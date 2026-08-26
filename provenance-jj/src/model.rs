@@ -1,4 +1,4 @@
-use provenance_core::{EntityAddress, EntityKind, EntityRef, Namespace, Value};
+use provenance_core::{EntityAddress, EntityRef, Value};
 use serde::{Deserialize, Serialize};
 
 /// Primitive universe used by the Jujutsu provenance adapter.
@@ -19,11 +19,7 @@ pub const CHANGE_KIND: &str = "change";
 pub const WORKSPACE_KIND: &str = "workspace";
 
 pub fn jj_address(kind: impl Into<String>, id: impl Into<String>) -> EntityAddress<JjModel> {
-    EntityAddress {
-        namespace: Namespace::from(JJ_NAMESPACE),
-        kind: EntityKind::from(kind.into()),
-        id: id.into(),
-    }
+    EntityAddress::new(JJ_NAMESPACE, kind.into(), id.into())
 }
 
 pub fn jj_operation(id: impl Into<String>) -> EntityAddress<JjModel> {

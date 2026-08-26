@@ -231,10 +231,7 @@ impl<M: Model> EntityAddress<M> {
     }
 
     pub fn entity_type(&self) -> EntityType {
-        EntityType {
-            namespace: self.namespace.clone(),
-            kind: self.kind.clone(),
-        }
+        EntityType::new(self.namespace.clone(), self.kind.clone())
     }
 
     pub fn ty(&self) -> EntityType {
@@ -246,6 +243,15 @@ impl<M: Model> EntityAddress<M> {
 pub struct EntityType {
     pub namespace: Namespace,
     pub kind: EntityKind,
+}
+
+impl EntityType {
+    pub fn new(namespace: impl Into<Namespace>, kind: impl Into<EntityKind>) -> Self {
+        Self {
+            namespace: namespace.into(),
+            kind: kind.into(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -412,6 +418,23 @@ pub struct EntitySchema {
     pub allow_unknown_fields: bool,
 }
 
+impl EntitySchema {
+    pub fn new<N, I>(entity_type: EntityType, fields: I, allow_unknown_fields: bool) -> Self
+    where
+        I: IntoIterator<Item = (N, FieldSchema)>,
+        N: Into<FieldName>,
+    {
+        Self {
+            entity_type,
+            fields: fields
+                .into_iter()
+                .map(|(name, schema)| (name.into(), schema))
+                .collect(),
+            allow_unknown_fields,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RelationType {
     pub namespace: Namespace,
@@ -463,6 +486,12 @@ pub struct ExplanationSemantics {
     pub direction: ExplanationDirection,
 }
 
+impl ExplanationSemantics {
+    pub fn new(role: ExplanationRole, direction: ExplanationDirection) -> Self {
+        Self { role, direction }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelationSchema {
     pub relation_type: RelationType,
@@ -470,6 +499,22 @@ pub struct RelationSchema {
     pub to: EntityTypePattern,
     /// None => not followed by generic explanation queries.
     pub explanation: Option<ExplanationSemantics>,
+}
+
+impl RelationSchema {
+    pub fn new(
+        relation_type: RelationType,
+        from: EntityTypePattern,
+        to: EntityTypePattern,
+        explanation: Option<ExplanationSemantics>,
+    ) -> Self {
+        Self {
+            relation_type,
+            from,
+            to,
+            explanation,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
