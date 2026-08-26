@@ -162,8 +162,8 @@ pub enum JjAdapterError {
     Repository(#[from] JjRepositoryError),
     #[error("could not load JJ commit: {0}")]
     Commit(String),
-    #[error("provenance core rejected JJ transaction: {0:?}")]
-    Core(provenance_core::Error),
+    #[error("provenance core rejected JJ transaction: {0}")]
+    Core(#[source] provenance_core::Error),
 }
 
 /// Adapter that translates one JJ repository snapshot into one generic transaction.

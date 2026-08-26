@@ -10,8 +10,8 @@ use crate::{
 pub enum JjIngestError {
     #[error(transparent)]
     Repository(#[from] crate::JjRepositoryError),
-    #[error("provenance ingestion failed: {0:?}")]
-    Process(ProcessError<JjAdapterError, JjRuntimeError>),
+    #[error("provenance ingestion failed: {0}")]
+    Process(#[source] ProcessError<JjAdapterError, JjRuntimeError>),
 }
 
 /// Hydrates JJ operations that are not already present in the provenance

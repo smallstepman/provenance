@@ -6,6 +6,7 @@ use crate::{Error, Transaction};
 use provenance_data_model::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+use thiserror::Error as ThisError;
 
 /// Pure plugin/integration boundary.
 ///
@@ -117,13 +118,17 @@ where
     pub state: State<M>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, ThisError, Serialize, Deserialize)]
 pub enum ProcessError<A, R> {
-    Adapter(A),
-    Prepare(R),
-    Publish(R),
+    #[error("adapter stage failed: {0}")]
+    Adapter(#[source] A),
+    #[error("prepare stage failed: {0}")]
+    Prepare(#[source] R),
+    #[error("publish stage failed: {0}")]
+    Publish(#[source] R),
     /// IMPORTANT: Operation is already authoritative when this is returned. Caller state has already advanced.
-    Finalize(R),
+    #[error("finalize stage failed: {0}")]
+    Finalize(#[source] R),
 }
 
 impl<M, I, R, A, RT> Service<M, I, R, A, RT>
@@ -168,5 +173,35 @@ where
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("disk full")]
+    struct TestError;
+
+    #[test]
+    fn process_error_includes_stage_and_source() {
+        let error: ProcessError<TestError, TestError> = ProcessError::Publish(TestError);
+
+        assert_eq!(error.to_string(), "publish stage failed: disk full");
+        assert_eq!(
+            std::error::Error::source(&error)
+                .expect("process error source")
+                .to_string(),
+            "disk full"
+        );
+    }
+
+    #[test]
+    fn core_error_has_contextual_display_message() {
+        assert_eq!(
+            Error::MissingSchemaDependency.to_string(),
+            "schema dependency is missing"
+        );
     }
 }

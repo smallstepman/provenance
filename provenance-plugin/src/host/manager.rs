@@ -59,8 +59,8 @@ pub enum PluginHostError {
     },
     #[error("WIT transaction conversion failed: {0}")]
     Conversion(#[from] conversion::ConversionError),
-    #[error("provenance core rejected plugin transaction: {0:?}")]
-    Core(CoreError),
+    #[error("provenance core rejected plugin transaction: {0}")]
+    Core(#[source] CoreError),
 }
 
 impl From<wasmtime::Error> for PluginHostError {

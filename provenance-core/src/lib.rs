@@ -102,49 +102,68 @@ pub use provenance_data_model::{
 };
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use thiserror::Error;
 
 // ERRORS
 // =============================================================================
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Error {
+    #[error("required value is missing")]
     Missing,
+    #[error("immutable identity collision")]
     IdentityCollision,
+    #[error("source parent is missing")]
     MissingSourceParent,
+    #[error("source is already mapped to a different operation")]
     SourceAlreadyMappedDifferently,
+    #[error("operation parent is missing")]
     MissingOperationParent,
+    #[error("operation graph contains a cycle")]
     OperationCycle,
+    #[error("schema is missing")]
     MissingSchema,
+    #[error("schema dependency is missing")]
     MissingSchemaDependency,
+    #[error("schema namespace is invalid")]
     InvalidSchemaNamespace,
+    #[error("entity schema is missing")]
     MissingEntitySchema,
+    #[error("relation schema is missing")]
     MissingRelationSchema,
+    #[error("entity type is invalid")]
     InvalidEntityType,
+    #[error("relation endpoint is invalid")]
     InvalidRelationEndpoint,
+    #[error("required field is missing")]
     MissingRequiredField,
+    #[error("field is not declared by the schema")]
     UnknownField,
+    #[error("field value has an invalid type")]
     InvalidFieldType,
+    #[error("session is missing")]
     MissingSession,
+    #[error("session has already ended")]
     SessionAlreadyEnded,
+    #[error("actor is missing")]
     MissingActor,
+    #[error("actor does not belong to the specified session")]
     ActorSessionMismatch,
+    #[error("event is missing")]
     MissingEvent,
+    #[error("object is missing")]
     MissingObject,
+    #[error("retention claim is unknown")]
     UnknownRetentionClaim,
+    #[error("self-relations are not allowed")]
     InvalidSelfRelation,
+    #[error("named query is invalid")]
     InvalidNamedQuery,
+    #[error("provenance merge conflict")]
     MergeConflict,
+    #[error("provenance policy rejected the operation")]
     PolicyRejected,
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{self:?}")
-    }
-}
-
-impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>; // =============================================================================
 
