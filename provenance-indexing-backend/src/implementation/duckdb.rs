@@ -596,14 +596,11 @@ where
                 }
                 Fact::EventRecorded(event) => {
                     let event_id = encode(&event.id)?;
-                    let inserted = transaction.execute(
+                    transaction.execute(
                         "INSERT OR IGNORE INTO event_index(event_id, event, operation_id) \
                          VALUES (?1, ?2, ?3)",
                         params![&event_id, encode(event)?, &operation_id],
                     )?;
-                    if inserted == 0 {
-                        continue;
-                    }
                     let mut entities = event.subjects.clone();
                     for relation in &event.relations {
                         entities.insert(relation.from.clone());
