@@ -78,112 +78,110 @@ fn relation(
 
 /// The complete JJ ontology registered by the adapter on first ingestion.
 pub fn jj_schema() -> SchemaDefinition {
-    let mut entities = BTreeMap::new();
-    entities.insert(
-        EntityKind::from(COMMIT_KIND),
-        entity_schema(
-            COMMIT_KIND,
-            [
-                ("commit_id", string_field(true)),
-                ("change_id", string_field(true)),
-                ("description", string_field(true)),
-                ("author", string_field(true)),
-                ("timestamp", string_field(true)),
-            ],
-        ),
-    );
-    entities.insert(
-        EntityKind::from(CHANGE_KIND),
-        entity_schema(
-            CHANGE_KIND,
-            [
-                ("change_id", string_field(true)),
-                ("current_commit", entity_field(COMMIT_KIND, true)),
-            ],
-        ),
-    );
-    entities.insert(
-        EntityKind::from(OPERATION_KIND),
-        entity_schema(
-            OPERATION_KIND,
-            [
-                ("operation_id", string_field(true)),
-                ("description", string_field(true)),
-            ],
-        ),
-    );
-    entities.insert(
-        EntityKind::from(WORKSPACE_KIND),
-        entity_schema(WORKSPACE_KIND, [("workspace_id", string_field(true))]),
-    );
-
-    let mut relations = BTreeMap::new();
-    relations.insert(
-        RelationName::from("belongs-to-change"),
-        relation(
-            "belongs-to-change",
-            COMMIT_KIND,
-            CHANGE_KIND,
-            ExplanationRole::Primary,
-            ExplanationDirection::FromExplainedByTo,
-        ),
-    );
-    relations.insert(
-        RelationName::from("predecessor-of"),
-        relation(
-            "predecessor-of",
-            COMMIT_KIND,
-            COMMIT_KIND,
-            ExplanationRole::Primary,
-            ExplanationDirection::FromExplainedByTo,
-        ),
-    );
-    relations.insert(
-        RelationName::from("produced"),
-        relation(
-            "produced",
-            OPERATION_KIND,
-            COMMIT_KIND,
-            ExplanationRole::Primary,
-            ExplanationDirection::ToExplainedByFrom,
-        ),
-    );
-    relations.insert(
-        RelationName::from("follows"),
-        relation(
-            "follows",
-            OPERATION_KIND,
-            OPERATION_KIND,
-            ExplanationRole::Supporting,
-            ExplanationDirection::FromExplainedByTo,
-        ),
-    );
-    relations.insert(
-        RelationName::from("contains"),
-        relation(
-            "contains",
-            WORKSPACE_KIND,
-            COMMIT_KIND,
-            ExplanationRole::Contextual,
-            ExplanationDirection::ToExplainedByFrom,
-        ),
-    );
-    relations.insert(
-        RelationName::from("currently-at"),
-        relation(
-            "currently-at",
-            WORKSPACE_KIND,
-            COMMIT_KIND,
-            ExplanationRole::Contextual,
-            ExplanationDirection::ToExplainedByFrom,
-        ),
-    );
-
     SchemaDefinition {
         key: jj_schema_key(),
         requires: BTreeSet::new(),
-        entities,
-        relations,
+        entities: BTreeMap::from([
+            (
+                EntityKind::from(COMMIT_KIND),
+                entity_schema(
+                    COMMIT_KIND,
+                    [
+                        ("commit_id", string_field(true)),
+                        ("change_id", string_field(true)),
+                        ("description", string_field(true)),
+                        ("author", string_field(true)),
+                        ("timestamp", string_field(true)),
+                    ],
+                ),
+            ),
+            (
+                EntityKind::from(CHANGE_KIND),
+                entity_schema(
+                    CHANGE_KIND,
+                    [
+                        ("change_id", string_field(true)),
+                        ("current_commit", entity_field(COMMIT_KIND, true)),
+                    ],
+                ),
+            ),
+            (
+                EntityKind::from(OPERATION_KIND),
+                entity_schema(
+                    OPERATION_KIND,
+                    [
+                        ("operation_id", string_field(true)),
+                        ("description", string_field(true)),
+                    ],
+                ),
+            ),
+            (
+                EntityKind::from(WORKSPACE_KIND),
+                entity_schema(WORKSPACE_KIND, [("workspace_id", string_field(true))]),
+            ),
+        ]),
+        relations: BTreeMap::from([
+            (
+                RelationName::from("belongs-to-change"),
+                relation(
+                    "belongs-to-change",
+                    COMMIT_KIND,
+                    CHANGE_KIND,
+                    ExplanationRole::Primary,
+                    ExplanationDirection::FromExplainedByTo,
+                ),
+            ),
+            (
+                RelationName::from("predecessor-of"),
+                relation(
+                    "predecessor-of",
+                    COMMIT_KIND,
+                    COMMIT_KIND,
+                    ExplanationRole::Primary,
+                    ExplanationDirection::FromExplainedByTo,
+                ),
+            ),
+            (
+                RelationName::from("produced"),
+                relation(
+                    "produced",
+                    OPERATION_KIND,
+                    COMMIT_KIND,
+                    ExplanationRole::Primary,
+                    ExplanationDirection::ToExplainedByFrom,
+                ),
+            ),
+            (
+                RelationName::from("follows"),
+                relation(
+                    "follows",
+                    OPERATION_KIND,
+                    OPERATION_KIND,
+                    ExplanationRole::Supporting,
+                    ExplanationDirection::FromExplainedByTo,
+                ),
+            ),
+            (
+                RelationName::from("contains"),
+                relation(
+                    "contains",
+                    WORKSPACE_KIND,
+                    COMMIT_KIND,
+                    ExplanationRole::Contextual,
+                    ExplanationDirection::ToExplainedByFrom,
+                ),
+            ),
+            (
+                RelationName::from("currently-at"),
+                relation(
+                    "currently-at",
+                    WORKSPACE_KIND,
+                    COMMIT_KIND,
+                    ExplanationRole::Contextual,
+                    ExplanationDirection::ToExplainedByFrom,
+                ),
+            ),
+        ]),
     }
 }
 
