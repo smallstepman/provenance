@@ -7,20 +7,35 @@
     all(feature = "sqlite", feature = "duckdb"),
     all(feature = "sqlite", feature = "doltlite"),
     all(feature = "sqlite", feature = "turso"),
-    all(feature = "sqlite", feature = "firebird"),
     all(feature = "sqlite", feature = "lbug"),
+    all(feature = "sqlite", feature = "redb"),
+    all(feature = "sqlite", feature = "heed"),
+    all(feature = "sqlite", feature = "mnestic"),
     all(feature = "duckdb", feature = "doltlite"),
     all(feature = "duckdb", feature = "turso"),
-    all(feature = "duckdb", feature = "firebird"),
     all(feature = "duckdb", feature = "lbug"),
+    all(feature = "duckdb", feature = "redb"),
+    all(feature = "duckdb", feature = "heed"),
+    all(feature = "duckdb", feature = "mnestic"),
     all(feature = "doltlite", feature = "turso"),
-    all(feature = "doltlite", feature = "firebird"),
     all(feature = "doltlite", feature = "lbug"),
-    all(feature = "turso", feature = "firebird"),
+    all(feature = "doltlite", feature = "redb"),
+    all(feature = "doltlite", feature = "heed"),
+    all(feature = "doltlite", feature = "mnestic"),
     all(feature = "turso", feature = "lbug"),
-    all(feature = "firebird", feature = "lbug"),
+    all(feature = "turso", feature = "redb"),
+    all(feature = "turso", feature = "heed"),
+    all(feature = "turso", feature = "mnestic"),
+    all(feature = "lbug", feature = "redb"),
+    all(feature = "lbug", feature = "heed"),
+    all(feature = "lbug", feature = "mnestic"),
+    all(feature = "redb", feature = "heed"),
+    all(feature = "redb", feature = "mnestic"),
+    all(feature = "heed", feature = "mnestic"),
 ))]
 compile_error!("database backend features are mutually exclusive");
+#[cfg(any(feature = "redb", feature = "heed", feature = "mnestic"))]
+mod kv;
 
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
@@ -39,11 +54,17 @@ pub mod doltlite {
 #[cfg(feature = "turso")]
 pub mod turso;
 
-#[cfg(feature = "firebird")]
-pub mod firebird;
-
 #[cfg(feature = "lbug")]
 pub mod lbug;
+
+#[cfg(feature = "redb")]
+pub mod redb;
+
+#[cfg(feature = "heed")]
+pub mod heed;
+
+#[cfg(feature = "mnestic")]
+pub mod mnestic;
 
 #[cfg(feature = "sqlite")]
 mod selected {
@@ -87,21 +108,6 @@ mod selected {
     not(feature = "duckdb"),
     not(feature = "doltlite"),
     not(feature = "turso"),
-    feature = "firebird"
-))]
-mod selected {
-    pub use super::firebird::{
-        FirebirdIndex as BackendIndex, FirebirdIndexError as BackendIndexError,
-        FirebirdStorage as BackendStorage, FirebirdStorageError as BackendStorageError,
-    };
-}
-
-#[cfg(all(
-    not(feature = "sqlite"),
-    not(feature = "duckdb"),
-    not(feature = "doltlite"),
-    not(feature = "turso"),
-    not(feature = "firebird"),
     feature = "lbug"
 ))]
 mod selected {
@@ -111,12 +117,62 @@ mod selected {
     };
 }
 
+#[cfg(all(
+    not(feature = "sqlite"),
+    not(feature = "duckdb"),
+    not(feature = "doltlite"),
+    not(feature = "turso"),
+    not(feature = "lbug"),
+    feature = "redb"
+))]
+mod selected {
+    pub use super::redb::{
+        RedbIndex as BackendIndex, RedbIndexError as BackendIndexError,
+        RedbStorage as BackendStorage, RedbStorageError as BackendStorageError,
+    };
+}
+
+#[cfg(all(
+    not(feature = "sqlite"),
+    not(feature = "duckdb"),
+    not(feature = "doltlite"),
+    not(feature = "turso"),
+    not(feature = "lbug"),
+    not(feature = "redb"),
+    feature = "heed"
+))]
+mod selected {
+    pub use super::heed::{
+        HeedIndex as BackendIndex, HeedIndexError as BackendIndexError,
+        HeedStorage as BackendStorage, HeedStorageError as BackendStorageError,
+    };
+}
+
+#[cfg(all(
+    not(feature = "sqlite"),
+    not(feature = "duckdb"),
+    not(feature = "doltlite"),
+    not(feature = "turso"),
+    not(feature = "lbug"),
+    not(feature = "redb"),
+    not(feature = "heed"),
+    feature = "mnestic"
+))]
+mod selected {
+    pub use super::mnestic::{
+        MnesticIndex as BackendIndex, MnesticIndexError as BackendIndexError,
+        MnesticStorage as BackendStorage, MnesticStorageError as BackendStorageError,
+    };
+}
+
 #[cfg(any(
     feature = "sqlite",
     feature = "duckdb",
     feature = "doltlite",
     feature = "turso",
-    feature = "firebird",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 pub use selected::{BackendIndex, BackendIndexError, BackendStorage, BackendStorageError};

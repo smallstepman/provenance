@@ -1,6 +1,15 @@
 #![allow(clippy::too_many_arguments)]
 
-#[cfg(feature = "sqlite-index")]
+#[cfg(any(
+    feature = "sqlite-index",
+    feature = "duckdb-index",
+    feature = "doltlite-index",
+    feature = "turso-index",
+    feature = "lbug-index",
+    feature = "redb-index",
+    feature = "heed-index",
+    feature = "mnestic-index",
+))]
 mod enabled {
     use std::env;
     use std::fmt::Write as _;
@@ -9,7 +18,7 @@ mod enabled {
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::sync::LazyLock;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group};
     use jj_lib::backend::CommitId;
@@ -22,9 +31,11 @@ mod enabled {
     use jj_lib::repo::Repo;
     use jj_lib::settings::UserSettings;
     use jj_lib::transaction::Transaction;
-    use provenance_core::QueryEngine;
+    use provenance_core::{Kernel, QueryEngine, State};
+    use provenance_indexing_backend::BackendIndex;
     use provenance_jj::{
-        DirectoryProvenanceStore, JjRepository, ingest_repository, open_service, why_jj_commit,
+        DirectoryProvenanceStore, JjAdapter, JjIdentity, JjRepository, JjRuntime, JjService,
+        ingest_repository, observe_repository, open_service, why_jj_commit,
     };
     use tempfile::TempDir;
 
@@ -32,6 +43,7 @@ mod enabled {
     const BRANCHES_AT_FULL_SCALE: usize = 200;
     const FILES_AT_FULL_SCALE: usize = 100;
     const DIRECTORIES_AT_FULL_SCALE: usize = 10;
+    const DEFAULT_FIXTURE_ROOT: &str = "/tmp/provenance-jj-bench-fixtures";
     const STACK_WIDTH: usize = 4;
 
     const SPECS: [RepositorySpec; 5] = [
@@ -58,6 +70,7 @@ mod enabled {
     ];
 
     static FIXTURES: LazyLock<FixtureSet> = LazyLock::new(|| {
+        let fixture_started = Instant::now();
         let max_submissions = env::var("PROVENANCE_JJ_BENCH_MAX_SUBMISSIONS")
             .ok()
             .map(|value| {
@@ -85,6 +98,10 @@ mod enabled {
         assert!(
             !repositories.is_empty(),
             "PROVENANCE_JJ_BENCH_REPOS selected no known repositories"
+        );
+        eprintln!(
+            "JJ benchmark fixture setup: {:.3}s",
+            fixture_started.elapsed().as_secs_f64()
         );
         let dashboard = write_dashboard(&repositories);
         eprintln!("JJ benchmark dashboard: {}", dashboard.display());
@@ -122,6 +139,21 @@ mod enabled {
         _dashboard: PathBuf,
     }
 
+    struct BenchmarkDirectory {
+        path: PathBuf,
+    }
+
+    impl BenchmarkDirectory {
+        fn persistent(path: PathBuf) -> Self {
+            fs::create_dir_all(&path).expect("create persistent benchmark fixture directory");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
     struct RepositoryFixture {
         spec: RepositorySpec,
         submissions: usize,
@@ -131,11 +163,11 @@ mod enabled {
         unmerged_branches: usize,
         simple_branches: usize,
         stacked_branches: usize,
-        _repository_dir: TempDir,
+        _repository_dir: BenchmarkDirectory,
         _baseline_repository: JjRepository,
         _current_repository: JjRepository,
-        _baseline_store_dir: TempDir,
-        _current_store_dir: TempDir,
+        _baseline_store_dir: BenchmarkDirectory,
+        _current_store_dir: BenchmarkDirectory,
         baseline_store: DirectoryProvenanceStore,
         current_store: DirectoryProvenanceStore,
         baseline_operations: usize,
@@ -171,6 +203,22 @@ mod enabled {
         assert_eq!(stacked_branches % STACK_WIDTH, 0);
         assert_eq!(files % directories, 0);
 
+        let (repository_dir, cached_baseline_operation) = repository_directory(spec, submissions);
+        if let Some(baseline_operation) = cached_baseline_operation {
+            return load_cached_repository(
+                spec,
+                submissions,
+                branches,
+                files,
+                directories,
+                unmerged_branches,
+                simple_branches,
+                stacked_branches,
+                repository_dir,
+                baseline_operation,
+            );
+        }
+
         eprintln!(
             "building {}: submissions={} ({} ordinary, {} same-change amendments), branches={} ({} unmerged, {} simple, {} stacked), files={}, directories={}",
             spec.name,
@@ -185,7 +233,6 @@ mod enabled {
             directories,
         );
 
-        let repository_dir = tempfile::tempdir().expect("create JJ benchmark repository tempdir");
         init_jj(repository_dir.path());
         populate_files(repository_dir.path(), files, directories);
 
@@ -339,10 +386,10 @@ mod enabled {
         let current_repository = JjRepository::load(&settings, repository_dir.path())
             .expect("load current JJ benchmark repository");
 
-        let baseline_store_dir = tempfile::tempdir().expect("create baseline provenance tempdir");
-        materialize_store(&baseline_repository, baseline_store_dir.path());
-        let current_store_dir = tempfile::tempdir().expect("create current provenance tempdir");
-        materialize_store(&current_repository, current_store_dir.path());
+        let baseline_store_dir = storage_directory(&repository_dir, "baseline-store");
+        materialize_store_if_missing(&baseline_repository, baseline_store_dir.path());
+        let current_store_dir = storage_directory(&repository_dir, "current-store");
+        materialize_store_if_missing(&current_repository, current_store_dir.path());
         let baseline_store = DirectoryProvenanceStore::open(baseline_store_dir.path())
             .expect("open baseline provenance store");
         let current_store = DirectoryProvenanceStore::open(current_store_dir.path())
@@ -354,6 +401,7 @@ mod enabled {
             .reachable_operation_count()
             .expect("count current provenance operations");
         assert_eq!(current_operations, baseline_operations + 1);
+        write_fixture_metadata(repository_dir.path(), &baseline_repository.operation_id());
 
         let branch_query = unmerged_heads
             .first()
@@ -394,6 +442,139 @@ mod enabled {
             baseline_operations,
             current_operations,
             query_cases,
+        }
+    }
+    fn repository_directory(
+        spec: RepositorySpec,
+        submissions: usize,
+    ) -> (BenchmarkDirectory, Option<String>) {
+        let root = env::var_os("PROVENANCE_JJ_BENCH_FIXTURE_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_FIXTURE_ROOT));
+        let path = root.join(spec.name).join(submissions.to_string());
+        let metadata = path.join("fixture.meta");
+        if metadata.exists()
+            && path.join(".jj").exists()
+            && path.join("baseline-store/heads/manifest").exists()
+            && path.join("current-store/heads/manifest").exists()
+        {
+            let baseline_operation =
+                fs::read_to_string(metadata).expect("read benchmark fixture metadata");
+            return (
+                BenchmarkDirectory::persistent(path),
+                Some(baseline_operation.trim().to_owned()),
+            );
+        }
+        if path.exists() {
+            fs::remove_dir_all(&path).expect("remove incomplete benchmark fixture");
+        }
+        (BenchmarkDirectory::persistent(path), None)
+    }
+
+    fn storage_directory(
+        repository_directory: &BenchmarkDirectory,
+        name: &str,
+    ) -> BenchmarkDirectory {
+        BenchmarkDirectory::persistent(repository_directory.path().join(name))
+    }
+
+    fn materialize_store_if_missing(repository: &JjRepository, path: &Path) {
+        if path.join("heads").join("manifest").exists() {
+            return;
+        }
+        materialize_store(repository, path);
+    }
+
+    fn write_fixture_metadata(path: &Path, baseline_operation: &str) {
+        fs::write(path.join("fixture.meta"), baseline_operation)
+            .expect("write benchmark fixture metadata");
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn load_cached_repository(
+        spec: RepositorySpec,
+        submissions: usize,
+        branches: usize,
+        files: usize,
+        directories: usize,
+        unmerged_branches: usize,
+        simple_branches: usize,
+        stacked_branches: usize,
+        repository_dir: BenchmarkDirectory,
+        baseline_operation_id: String,
+    ) -> RepositoryFixture {
+        let settings = benchmark_settings();
+        let current_repository = JjRepository::load(&settings, repository_dir.path())
+            .expect("load cached current JJ benchmark repository");
+        let baseline_operation = current_repository
+            .operation_ancestry()
+            .expect("load cached JJ operation ancestry")
+            .into_iter()
+            .find(|operation| operation.id().hex() == baseline_operation_id)
+            .expect("cached baseline operation is present");
+        let baseline_repository = current_repository
+            .at_operation(baseline_operation.id())
+            .expect("load cached baseline JJ repository");
+        let baseline_store_dir = storage_directory(&repository_dir, "baseline-store");
+        let current_store_dir = storage_directory(&repository_dir, "current-store");
+        let baseline_store = DirectoryProvenanceStore::open(baseline_store_dir.path())
+            .expect("open cached baseline provenance store");
+        let current_store = DirectoryProvenanceStore::open(current_store_dir.path())
+            .expect("open cached current provenance store");
+        let baseline_operations = baseline_store
+            .reachable_operation_count()
+            .expect("count cached baseline operations");
+        let current_operations = current_store
+            .reachable_operation_count()
+            .expect("count cached current operations");
+        assert_eq!(current_operations, baseline_operations + 1);
+
+        let current_commit = non_empty_head(current_repository.repo());
+        let baseline_commit = non_empty_head(baseline_repository.repo());
+        let branch_query = current_repository
+            .repo()
+            .view()
+            .heads()
+            .iter()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| current_commit.clone());
+        eprintln!(
+            "reusing {}: submissions={}, baseline_operations={}, current_operations={}",
+            spec.name, submissions, baseline_operations, current_operations
+        );
+        RepositoryFixture {
+            spec,
+            submissions,
+            branches,
+            files,
+            directories,
+            unmerged_branches,
+            simple_branches,
+            stacked_branches,
+            _repository_dir: repository_dir,
+            _baseline_repository: baseline_repository,
+            _current_repository: current_repository,
+            _baseline_store_dir: baseline_store_dir,
+            _current_store_dir: current_store_dir,
+            baseline_store,
+            current_store,
+            baseline_operations,
+            current_operations,
+            query_cases: vec![
+                QueryCase {
+                    name: "main-head",
+                    commit_id: current_commit.hex(),
+                },
+                QueryCase {
+                    name: "pre-amend",
+                    commit_id: baseline_commit.hex(),
+                },
+                QueryCase {
+                    name: "unmerged-branch",
+                    commit_id: branch_query.hex(),
+                },
+            ],
         }
     }
 
@@ -574,8 +755,326 @@ email = "provenance-benchmark@example.invalid"
             .set_local_bookmark_target(name.as_ref(), RefTarget::normal(commit_id));
         pollster::block_on(transaction.commit(description)).expect("publish JJ bookmark")
     }
+    fn load_authoritative_state(store_path: &Path) -> State<provenance_jj::JjModel> {
+        let store = DirectoryProvenanceStore::open(store_path)
+            .expect("open authoritative provenance store");
+        let mut state = State::new();
+        for operation in store
+            .reachable_operations()
+            .expect("read reachable authoritative operations")
+        {
+            state
+                .operations
+                .declare(operation.id.clone(), operation)
+                .expect("declare authoritative operation");
+        }
+        state.rebuild().expect("rebuild authoritative state");
+        state
+    }
 
-    type BenchmarkIndex = provenance_jj::SqliteIndex<provenance_jj::JjModel>;
+    fn query_cases(
+        fixture: &RepositoryFixture,
+    ) -> Vec<provenance_core::Query<provenance_jj::JjModel>> {
+        fixture
+            .query_cases
+            .iter()
+            .map(|query_case| why_jj_commit(&query_case.commit_id))
+            .collect()
+    }
+
+    fn assert_query_equivalence(
+        state: &State<provenance_jj::JjModel>,
+        index: &BenchmarkIndex,
+        query: &provenance_core::Query<provenance_jj::JjModel>,
+    ) {
+        let raw = state.execute(query).expect("execute raw state query");
+        let indexed = index.execute(query).expect("execute indexed query");
+        assert_eq!(raw, indexed, "raw and indexed query results differ");
+    }
+
+    fn open_persistent_index() -> (TempDir, BenchmarkIndex) {
+        let directory = TempDir::new().expect("create persistent index directory");
+        let path = directory.path().join("projection");
+        let index = BenchmarkIndex::open(&path).expect("open persistent benchmark index");
+        (directory, index)
+    }
+
+    fn remove_index_path(path: &Path) {
+        if path.is_dir() {
+            fs::remove_dir_all(path).expect("remove persistent benchmark index directory");
+        } else if path.exists() {
+            fs::remove_file(path).expect("remove persistent benchmark index file");
+        }
+    }
+
+    fn persistent_index_path() -> (TempDir, PathBuf) {
+        let directory = TempDir::new().expect("create cold index directory");
+        let path = directory_path(&directory);
+        (directory, path)
+    }
+
+    fn directory_path(directory: &TempDir) -> PathBuf {
+        directory.path().join("projection")
+    }
+
+    fn raw_service(repository: &JjRepository) -> JjService {
+        JjService {
+            kernel: Kernel::new(JjIdentity),
+            adapter: JjAdapter,
+            runtime: JjRuntime::new(repository.repo().clone()),
+            state: State::new(),
+        }
+    }
+
+    fn benchmark_raw_ingest_query(c: &mut Criterion) {
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_raw_ingest_query");
+        for fixture in &fixture_set.repositories {
+            for query_case in &fixture.query_cases {
+                let query = why_jj_commit(&query_case.commit_id);
+                group.bench_with_input(
+                    BenchmarkId::new(query_case.name, fixture.spec.name),
+                    &query,
+                    |benchmark, query| {
+                        benchmark.iter(|| {
+                            let mut service = raw_service(&fixture._current_repository);
+                            ingest_repository(&mut service, &fixture._current_repository)
+                                .expect("ingest JJ repository into raw state");
+                            black_box(
+                                service
+                                    .state
+                                    .execute(black_box(query))
+                                    .expect("execute raw JJ query"),
+                            );
+                        });
+                    },
+                );
+            }
+        }
+        group.finish();
+    }
+
+    fn benchmark_raw_observation(c: &mut Criterion) {
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_raw_observation");
+        for fixture in &fixture_set.repositories {
+            group.bench_with_input(
+                BenchmarkId::from_parameter(fixture.spec.name),
+                fixture,
+                |benchmark, fixture| {
+                    benchmark.iter(|| {
+                        let transaction = observe_repository(&fixture._current_repository)
+                            .expect("observe current JJ repository");
+                        black_box(transaction.intents.len());
+                    });
+                },
+            );
+        }
+        group.finish();
+    }
+
+    fn benchmark_authority_recovery(c: &mut Criterion) {
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_authority_recovery");
+        for fixture in &fixture_set.repositories {
+            group.bench_with_input(
+                BenchmarkId::from_parameter(fixture.spec.name),
+                fixture,
+                |benchmark, fixture| {
+                    benchmark.iter(|| {
+                        let state = load_authoritative_state(fixture._current_store_dir.path());
+                        black_box(state.operations.len());
+                    });
+                },
+            );
+        }
+        group.finish();
+    }
+
+    fn benchmark_raw_query_performance(c: &mut Criterion) {
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_raw_state_query_performance");
+        for fixture in &fixture_set.repositories {
+            let state = load_authoritative_state(fixture._current_store_dir.path());
+            for query_case in &fixture.query_cases {
+                let query = why_jj_commit(&query_case.commit_id);
+                group.bench_with_input(
+                    BenchmarkId::new(query_case.name, fixture.spec.name),
+                    &query,
+                    |benchmark, query| {
+                        benchmark.iter(|| {
+                            black_box(state.execute(black_box(query)).expect("execute raw query"));
+                        });
+                    },
+                );
+            }
+        }
+        group.finish();
+    }
+
+    fn benchmark_persistent_query_performance(c: &mut Criterion) {
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_persistent_index_query_performance");
+        for fixture in &fixture_set.repositories {
+            let (directory, mut index) = open_persistent_index();
+            index
+                .rebuild_from(&fixture.current_store)
+                .expect("build persistent benchmark query index");
+            let state = load_authoritative_state(fixture._current_store_dir.path());
+            for query in query_cases(fixture) {
+                assert_query_equivalence(&state, &index, &query);
+            }
+            for query_case in &fixture.query_cases {
+                let query = why_jj_commit(&query_case.commit_id);
+                group.bench_with_input(
+                    BenchmarkId::new(query_case.name, fixture.spec.name),
+                    &query,
+                    |benchmark, query| {
+                        benchmark.iter(|| {
+                            black_box(
+                                index
+                                    .execute(black_box(query))
+                                    .expect("execute persistent indexed query"),
+                            );
+                        });
+                    },
+                );
+            }
+            black_box(directory);
+        }
+        group.finish();
+    }
+
+    fn benchmark_reopen_query(c: &mut Criterion) {
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_persistent_index_reopen_query");
+        for fixture in &fixture_set.repositories {
+            let (directory, mut index) = open_persistent_index();
+            index
+                .rebuild_from(&fixture.current_store)
+                .expect("build persistent reopen index");
+            drop(index);
+            let path = directory_path(&directory);
+            for query_case in &fixture.query_cases {
+                let query = why_jj_commit(&query_case.commit_id);
+                group.bench_with_input(
+                    BenchmarkId::new(query_case.name, fixture.spec.name),
+                    &query,
+                    |benchmark, query| {
+                        benchmark.iter(|| {
+                            let index =
+                                BenchmarkIndex::open(&path).expect("reopen persistent index");
+                            black_box(
+                                index
+                                    .execute(black_box(query))
+                                    .expect("execute reopened indexed query"),
+                            );
+                        });
+                    },
+                );
+            }
+        }
+        group.finish();
+    }
+
+    fn benchmark_cold_query(c: &mut Criterion) {
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_cold_query_end_to_end");
+        for fixture in &fixture_set.repositories {
+            let (directory, path) = persistent_index_path();
+            for query_case in &fixture.query_cases {
+                let query = why_jj_commit(&query_case.commit_id);
+                group.bench_with_input(
+                    BenchmarkId::new(format!("raw-{}", query_case.name), fixture.spec.name),
+                    &query,
+                    |benchmark, query| {
+                        benchmark.iter(|| {
+                            let state = load_authoritative_state(fixture._current_store_dir.path());
+                            black_box(
+                                state
+                                    .execute(black_box(query))
+                                    .expect("execute cold raw query"),
+                            );
+                        });
+                    },
+                );
+                group.bench_with_input(
+                    BenchmarkId::new(format!("persistent-{}", query_case.name), fixture.spec.name),
+                    &query,
+                    |benchmark, query| {
+                        benchmark.iter(|| {
+                            remove_index_path(&path);
+                            let mut index =
+                                BenchmarkIndex::open(&path).expect("open cold benchmark index");
+                            index
+                                .rebuild_from(&fixture.current_store)
+                                .expect("rebuild cold benchmark index");
+                            black_box(
+                                index
+                                    .execute(black_box(query))
+                                    .expect("execute cold indexed query"),
+                            );
+                        });
+                    },
+                );
+            }
+            black_box(directory);
+        }
+        group.finish();
+    }
+
+    fn benchmark_batched_queries(c: &mut Criterion) {
+        const QUERY_COUNTS: [usize; 4] = [1, 10, 100, 1_000];
+        let fixture_set = fixtures();
+        let mut group = c.benchmark_group("jj_batched_queries");
+        for fixture in &fixture_set.repositories {
+            let state = load_authoritative_state(fixture._current_store_dir.path());
+            let queries = query_cases(fixture);
+            let (directory, mut index) = open_persistent_index();
+            index
+                .rebuild_from(&fixture.current_store)
+                .expect("build persistent batched query index");
+            for query_count in QUERY_COUNTS {
+                group.bench_function(
+                    BenchmarkId::new(format!("raw-q{query_count}"), fixture.spec.name),
+                    |benchmark| {
+                        benchmark.iter(|| {
+                            let mut entities = 0usize;
+                            for index in 0..query_count {
+                                entities += state
+                                    .execute(&queries[index % queries.len()])
+                                    .expect("execute batched raw query")
+                                    .entities
+                                    .len();
+                            }
+                            black_box(entities);
+                        });
+                    },
+                );
+                group.bench_function(
+                    BenchmarkId::new(format!("persistent-q{query_count}"), fixture.spec.name),
+                    |benchmark| {
+                        benchmark.iter(|| {
+                            let mut entities = 0usize;
+                            for query_index in 0..query_count {
+                                entities += index
+                                    .execute(&queries[query_index % queries.len()])
+                                    .expect("execute batched indexed query")
+                                    .entities
+                                    .len();
+                            }
+                            black_box(entities);
+                        });
+                    },
+                );
+            }
+            drop(index);
+            black_box(directory);
+        }
+        group.finish();
+    }
+
+    type BenchmarkIndex = BackendIndex<provenance_jj::JjModel>;
 
     fn benchmark_index_recreation(c: &mut Criterion) {
         let fixture_set = fixtures();
@@ -586,8 +1085,8 @@ email = "provenance-benchmark@example.invalid"
                 fixture,
                 |benchmark, fixture| {
                     benchmark.iter_batched(
-                        || BenchmarkIndex::in_memory().expect("open benchmark SQLite index"),
-                        |mut index| {
+                        || open_persistent_index(),
+                        |(directory, mut index)| {
                             index
                                 .rebuild_from(&fixture.current_store)
                                 .expect("recreate benchmark index");
@@ -596,6 +1095,8 @@ email = "provenance-benchmark@example.invalid"
                                     .operation_count()
                                     .expect("count recreated benchmark operations"),
                             );
+                            drop(index);
+                            black_box(directory);
                         },
                         BatchSize::LargeInput,
                     );
@@ -615,22 +1116,23 @@ email = "provenance-benchmark@example.invalid"
                 |benchmark, fixture| {
                     benchmark.iter_batched(
                         || {
-                            let mut index =
-                                BenchmarkIndex::in_memory().expect("open benchmark SQLite index");
+                            let (directory, mut index) = open_persistent_index();
                             index
                                 .rebuild_from(&fixture.baseline_store)
-                                .expect("build benchmark baseline index");
-                            index
+                                .expect("build persistent benchmark baseline index");
+                            (directory, index)
                         },
-                        |mut index| {
+                        |(directory, mut index)| {
                             index
-                                .rebuild_from(&fixture.current_store)
+                                .update_from(&fixture.current_store)
                                 .expect("update benchmark index");
                             black_box(
                                 index
                                     .operation_count()
                                     .expect("count updated benchmark operations"),
                             );
+                            drop(index);
+                            black_box(directory);
                         },
                         BatchSize::LargeInput,
                     );
@@ -644,10 +1146,10 @@ email = "provenance-benchmark@example.invalid"
         let fixture_set = fixtures();
         let mut group = c.benchmark_group("jj_query_performance");
         for fixture in &fixture_set.repositories {
-            let mut index = BenchmarkIndex::in_memory().expect("open benchmark SQLite index");
+            let (directory, mut index) = open_persistent_index();
             index
                 .rebuild_from(&fixture.current_store)
-                .expect("build benchmark query index");
+                .expect("build persistent benchmark query index");
             for query_case in &fixture.query_cases {
                 let query = why_jj_commit(&query_case.commit_id);
                 group.bench_with_input(
@@ -660,6 +1162,8 @@ email = "provenance-benchmark@example.invalid"
                     },
                 );
             }
+            drop(index);
+            black_box(directory);
         }
         group.finish();
     }
@@ -718,15 +1222,37 @@ email = "provenance-benchmark@example.invalid"
         name = jj_scaling;
         config = Criterion::default()
             .warm_up_time(Duration::from_secs(1))
-            .measurement_time(Duration::from_secs(3));
-        targets = benchmark_index_recreation, benchmark_index_update, benchmark_query_performance
+            .measurement_time(Duration::from_secs(1));
+        targets = benchmark_raw_observation, benchmark_raw_ingest_query,
+            benchmark_authority_recovery, benchmark_raw_query_performance,
+            benchmark_persistent_query_performance, benchmark_reopen_query,
+            benchmark_cold_query, benchmark_batched_queries, benchmark_index_recreation,
+            benchmark_index_update, benchmark_query_performance
     }
 }
 
-#[cfg(feature = "sqlite-index")]
+#[cfg(any(
+    feature = "sqlite-index",
+    feature = "duckdb-index",
+    feature = "doltlite-index",
+    feature = "turso-index",
+    feature = "lbug-index",
+    feature = "redb-index",
+    feature = "heed-index",
+    feature = "mnestic-index",
+))]
 criterion::criterion_main!(enabled::jj_scaling);
 
-#[cfg(not(feature = "sqlite-index"))]
+#[cfg(not(any(
+    feature = "sqlite-index",
+    feature = "duckdb-index",
+    feature = "doltlite-index",
+    feature = "turso-index",
+    feature = "lbug-index",
+    feature = "redb-index",
+    feature = "heed-index",
+    feature = "mnestic-index",
+)))]
 fn main() {
-    eprintln!("enable the sqlite-index feature to run jj_scaling");
+    eprintln!("enable one database backend feature to run jj_scaling");
 }

@@ -148,6 +148,30 @@ where
         })
     }
 
+    fn apply_delta(
+        &mut self,
+        operations: &[Operation<M>],
+        _state: &State<M>,
+    ) -> Result<(), Self::Error> {
+        if operations.is_empty() {
+            return Ok(());
+        }
+        pollster::block_on(async {
+            self.connection.execute("BEGIN IMMEDIATE", ()).await?;
+            let result = write_operation_delta(&self.connection, operations).await;
+            match result {
+                Ok(()) => {
+                    self.connection.execute("COMMIT", ()).await?;
+                    Ok(())
+                }
+                Err(error) => {
+                    let _ = self.connection.execute("ROLLBACK", ()).await;
+                    Err(error)
+                }
+            }
+        })
+    }
+
     fn clear(&mut self) -> Result<(), Self::Error> {
         pollster::block_on(async {
             self.connection.execute("BEGIN IMMEDIATE", ()).await?;
@@ -180,6 +204,28 @@ where
                     "operation count returned {value:?}"
                 ))),
             }
+        })
+    }
+
+    fn indexed_operations(&self) -> Result<Vec<Operation<M>>, Self::Error> {
+        pollster::block_on(async {
+            let mut rows = self
+                .connection
+                .query("SELECT operation FROM operation_index", ())
+                .await?;
+            let mut operations = Vec::new();
+            while let Some(row) = rows.next().await? {
+                let blob = match row.get_value(0)? {
+                    Value::Blob(blob) => blob,
+                    value => {
+                        return Err(TursoStorageError::InvalidProjection(format!(
+                            "operation row returned {value:?}"
+                        )));
+                    }
+                };
+                operations.push(decode(&blob)?);
+            }
+            Ok(operations)
         })
     }
 
@@ -398,6 +444,14 @@ where
         self.inner.rebuild_from(store)
     }
 
+    fn update_from<T>(&mut self, store: &T) -> Result<(), Self::Error>
+    where
+        T: provenance_core::ProvenanceStore<M>,
+        T::Error: std::fmt::Display,
+    {
+        self.inner.update_from(store)
+    }
+
     fn clear(&mut self) -> Result<(), Self::Error> {
         self.inner.clear()
     }
@@ -547,6 +601,136 @@ where
                     ),
                 )
                 .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn write_operation_delta<M>(
+    connection: &Connection,
+    operations: &[Operation<M>],
+) -> Result<(), TursoStorageError>
+where
+    M: IndexModel,
+    M::Id: Serialize + DeserializeOwned,
+    M::Seed: Serialize + DeserializeOwned,
+    M::ExternalId: Serialize + DeserializeOwned,
+    M::Payload: Serialize + DeserializeOwned,
+{
+    for operation in operations {
+        let operation_id = encode(&operation.id)?;
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO operation_index(operation_id, operation, parent_count) VALUES (?1, ?2, ?3)",
+                (
+                    operation_id.clone(),
+                    encode(operation)?,
+                    operation.parents.len() as i64,
+                ),
+            )
+            .await?;
+        for parent_id in &operation.parents {
+            connection
+                .execute(
+                    "INSERT OR IGNORE INTO operation_parent_index(operation_id, parent_id) VALUES (?1, ?2)",
+                    (operation_id.clone(), encode(parent_id)?),
+                )
+                .await?;
+        }
+        if let Some(source) = &operation.source {
+            connection
+                .execute(
+                    "INSERT OR IGNORE INTO source_index(source, operation_id) VALUES (?1, ?2)",
+                    (encode(source)?, operation_id.clone()),
+                )
+                .await?;
+        }
+        for fact in &operation.facts {
+            match fact {
+                Fact::SchemaRegistered(schema) => {
+                    connection
+                        .execute(
+                            "INSERT OR IGNORE INTO schema_index(schema_key, schema) VALUES (?1, ?2)",
+                            (encode(&schema.key)?, encode(schema)?),
+                        )
+                        .await?;
+                }
+                Fact::NamedQueryRegistered(query) => {
+                    connection
+                        .execute(
+                            "INSERT OR IGNORE INTO named_query_index(query_key, query) VALUES (?1, ?2)",
+                            (encode(&query.key)?, encode(query)?),
+                        )
+                        .await?;
+                }
+                Fact::SourceAnchored(anchor) => {
+                    connection
+                        .execute(
+                            "INSERT OR IGNORE INTO source_index(source, operation_id) VALUES (?1, ?2)",
+                            (encode(&anchor.source)?, encode(&anchor.operation)?),
+                        )
+                        .await?;
+                }
+                Fact::EntityObserved(observation) => {
+                    connection
+                        .execute(
+                            "INSERT OR REPLACE INTO entity_index(entity_key, observation) VALUES (?1, ?2)",
+                            (
+                                encode(&EntityRef::External(observation.entity.clone()))?,
+                                encode(observation)?,
+                            ),
+                        )
+                        .await?;
+                    connection
+                        .execute(
+                            "INSERT OR IGNORE INTO entity_history_index(entity_key, operation_id) VALUES (?1, ?2)",
+                            (
+                                encode(&EntityRef::External(observation.entity.clone()))?,
+                                operation_id.clone(),
+                            ),
+                        )
+                        .await?;
+                }
+                Fact::EventRecorded(event) => {
+                    let event_id = encode(&event.id)?;
+                    connection
+                        .execute(
+                            "INSERT OR IGNORE INTO event_index(event_id, event, operation_id) VALUES (?1, ?2, ?3)",
+                            (event_id.clone(), encode(event)?, operation_id.clone()),
+                        )
+                        .await?;
+                    let mut entities = event.subjects.clone();
+                    for relation in &event.relations {
+                        entities.insert(relation.from.clone());
+                        entities.insert(relation.to.clone());
+                        let edge = GraphEdge {
+                            relation: relation.clone(),
+                            event: event.id.clone(),
+                            operation: operation.id.clone(),
+                        };
+                        connection
+                            .execute(
+                                "INSERT OR IGNORE INTO graph_edge_index(edge_key, from_key, to_key, edge) VALUES (?1, ?2, ?3, ?4)",
+                                (
+                                    encode(&edge)?,
+                                    encode(&relation.from)?,
+                                    encode(&relation.to)?,
+                                    encode(&edge)?,
+                                ),
+                            )
+                            .await?;
+                    }
+                    for entity in entities {
+                        connection
+                            .execute(
+                                "INSERT OR IGNORE INTO event_entity_index(event_id, entity_key) VALUES (?1, ?2)",
+                                (event_id.clone(), encode(&entity)?),
+                            )
+                            .await?;
+                    }
+                }
+                _ => {}
+            }
         }
     }
     Ok(())

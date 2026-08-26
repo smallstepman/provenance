@@ -156,6 +156,29 @@ where
             .adapter
             .plan(&self.kernel, &self.state, input)
             .map_err(ProcessError::Adapter)?;
+        self.commit_plan(plan)
+    }
+
+    /// Process a transaction that was produced outside the adapter's normal
+    /// input path.
+    ///
+    /// Integrations that can cheaply compute a delta may still produce the
+    /// same generic transaction and use the normal kernel/runtime protocol.
+    pub fn process_transaction(
+        &mut self,
+        transaction: Transaction<M>,
+    ) -> std::result::Result<(), ProcessError<A::Error, RT::Error>> {
+        let plan = self
+            .kernel
+            .transact(&self.state, transaction)
+            .map_err(|error| ProcessError::Adapter(self.adapter.core_error(error)))?;
+        self.commit_plan(plan)
+    }
+
+    fn commit_plan(
+        &mut self,
+        plan: CommitPlan<M>,
+    ) -> std::result::Result<(), ProcessError<A::Error, RT::Error>> {
         if plan.idempotent {
             return Ok(());
         }

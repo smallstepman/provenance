@@ -8,11 +8,39 @@ name = "provenance_jj"
 path = "src/lib.rs"
 
 [features]
-default = []
-sqlite-index = [
-    "dep:provenance-indexing-backend",
-    "provenance-indexing-backend/sqlite",
-]
+ default = []
+ sqlite-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/sqlite",
+ ]
+ duckdb-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/duckdb",
+ ]
+ doltlite-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/doltlite",
+ ]
+ turso-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/turso",
+ ]
+ lbug-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/lbug",
+ ]
+ redb-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/redb",
+ ]
+ heed-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/heed",
+ ]
+ mnestic-index = [
+     "dep:provenance-indexing-backend",
+     "provenance-indexing-backend/mnestic",
+ ]
 
 [dependencies]
 provenance-core = { path = "../provenance-core" }

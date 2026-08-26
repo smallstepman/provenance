@@ -4,6 +4,9 @@
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 #[cfg(any(
@@ -12,6 +15,9 @@ use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 use provenance_core::QueryEngine;
 #[cfg(any(
@@ -20,6 +26,9 @@ use provenance_core::QueryEngine;
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 use provenance_indexing_backend::test_support;
 #[cfg(any(
@@ -28,6 +37,9 @@ use provenance_indexing_backend::test_support;
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 use std::hint::black_box;
 
@@ -37,6 +49,9 @@ use std::hint::black_box;
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 type BenchmarkIndex = provenance_indexing_backend::BackendIndex<test_support::TestModel>;
 
@@ -46,6 +61,9 @@ type BenchmarkIndex = provenance_indexing_backend::BackendIndex<test_support::Te
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 fn backend_name() -> &'static str {
     if cfg!(feature = "sqlite") {
@@ -56,6 +74,12 @@ fn backend_name() -> &'static str {
         "doltlite"
     } else if cfg!(feature = "turso") {
         "turso"
+    } else if cfg!(feature = "redb") {
+        "redb"
+    } else if cfg!(feature = "heed") {
+        "heed"
+    } else if cfg!(feature = "mnestic") {
+        "mnestic"
     } else {
         "lbug"
     }
@@ -67,6 +91,9 @@ fn backend_name() -> &'static str {
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 fn open_index() -> BenchmarkIndex {
     BenchmarkIndex::in_memory().expect("open projection index")
@@ -78,6 +105,9 @@ fn open_index() -> BenchmarkIndex {
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 fn bench_rebuild(c: &mut Criterion) {
     let operations = vec![test_support::operation_with_nodes(256)];
@@ -103,6 +133,9 @@ fn bench_rebuild(c: &mut Criterion) {
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 fn bench_explain(c: &mut Criterion) {
     let operations = vec![test_support::operation_with_nodes(256)];
@@ -124,6 +157,9 @@ fn bench_explain(c: &mut Criterion) {
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 criterion_group!(backends, bench_rebuild, bench_explain);
 #[cfg(any(
@@ -132,6 +168,9 @@ criterion_group!(backends, bench_rebuild, bench_explain);
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 ))]
 criterion_main!(backends);
 
@@ -141,5 +180,8 @@ criterion_main!(backends);
     feature = "doltlite",
     feature = "turso",
     feature = "lbug",
+    feature = "redb",
+    feature = "heed",
+    feature = "mnestic",
 )))]
 fn main() {}

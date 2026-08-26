@@ -132,6 +132,29 @@ where
         }
     }
 
+    fn apply_delta(
+        &mut self,
+        operations: &[Operation<M>],
+        _state: &State<M>,
+    ) -> Result<(), Self::Error> {
+        if operations.is_empty() {
+            return Ok(());
+        }
+        let connection = self.connection()?;
+        connection.query("BEGIN TRANSACTION;")?;
+        let result = write_operation_delta(&connection, operations);
+        match result {
+            Ok(()) => {
+                connection.query("COMMIT;")?;
+                Ok(())
+            }
+            Err(error) => {
+                let _ = connection.query("ROLLBACK;");
+                Err(error)
+            }
+        }
+    }
+
     fn operation_count(&self) -> Result<usize, Self::Error> {
         let connection = self.connection()?;
         let mut rows = connection.query("MATCH (n:operation_index) RETURN count(n);")?;
@@ -145,6 +168,17 @@ where
                 "operation count returned {value:?}"
             ))),
         }
+    }
+
+    fn indexed_operations(&self) -> Result<Vec<Operation<M>>, Self::Error> {
+        let values = query_strings(
+            &self.connection()?,
+            "MATCH (n:operation_index) RETURN n.operation;",
+        )?;
+        values
+            .iter()
+            .map(|value| decode_hex(value).and_then(|bytes| decode(&bytes)))
+            .collect()
     }
 
     fn contains(&self, operation_id: &OperationId<M>) -> Result<bool, Self::Error> {
@@ -355,6 +389,14 @@ where
         T::Error: std::fmt::Display,
     {
         self.inner.rebuild_from(store)
+    }
+
+    fn update_from<T>(&mut self, store: &T) -> Result<(), Self::Error>
+    where
+        T: provenance_core::ProvenanceStore<M>,
+        T::Error: std::fmt::Display,
+    {
+        self.inner.update_from(store)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
@@ -598,6 +640,195 @@ where
             );
             connection.query(&query)?;
         }
+    }
+    Ok(())
+}
+
+fn write_operation_delta<M>(
+    connection: &Connection<'_>,
+    operations: &[Operation<M>],
+) -> Result<(), LbugStorageError>
+where
+    M: IndexModel,
+    M::Id: Serialize + DeserializeOwned,
+    M::Seed: Serialize + DeserializeOwned,
+    M::ExternalId: Serialize + DeserializeOwned,
+    M::Payload: Serialize + DeserializeOwned,
+{
+    for operation in operations {
+        let operation_key = encode_key(&operation.id)?;
+        create_node(
+            connection,
+            "operation_index",
+            &[
+                ("operation_id", operation_key.clone()),
+                ("operation", encode_hex(&encode(operation)?)),
+                ("parent_count", operation.parents.len().to_string()),
+            ],
+        )?;
+        for parent_id in &operation.parents {
+            let parent_key = encode_key(parent_id)?;
+            create_node(
+                connection,
+                "operation_parent_index",
+                &[
+                    ("row_key", format!("{operation_key}:{parent_key}")),
+                    ("operation_id", operation_key.clone()),
+                    ("parent_id", parent_key),
+                ],
+            )?;
+        }
+        if let Some(source) = &operation.source {
+            let source_key = encode_key(source)?;
+            delete_node(connection, "source_index", "source", &source_key)?;
+            create_node(
+                connection,
+                "source_index",
+                &[
+                    ("source", source_key),
+                    ("operation_id", operation_key.clone()),
+                ],
+            )?;
+        }
+        for fact in &operation.facts {
+            match fact {
+                Fact::SchemaRegistered(schema) => {
+                    let key = encode_key(&schema.key)?;
+                    delete_node(connection, "schema_index", "schema_key", &key)?;
+                    create_node(
+                        connection,
+                        "schema_index",
+                        &[
+                            ("schema_key", key),
+                            ("schema", encode_hex(&encode(schema)?)),
+                        ],
+                    )?;
+                }
+                Fact::NamedQueryRegistered(query) => {
+                    let key = encode_key(&query.key)?;
+                    delete_node(connection, "named_query_index", "query_key", &key)?;
+                    create_node(
+                        connection,
+                        "named_query_index",
+                        &[("query_key", key), ("query", encode_hex(&encode(query)?))],
+                    )?;
+                }
+                Fact::SourceAnchored(anchor) => {
+                    let key = encode_key(&anchor.source)?;
+                    delete_node(connection, "source_index", "source", &key)?;
+                    create_node(
+                        connection,
+                        "source_index",
+                        &[
+                            ("source", key),
+                            ("operation_id", encode_key(&anchor.operation)?),
+                        ],
+                    )?;
+                }
+                Fact::EntityObserved(observation) => {
+                    let key = encode_key(&EntityRef::External(observation.entity.clone()))?;
+                    delete_node(connection, "entity_index", "entity_key", &key)?;
+                    create_node(
+                        connection,
+                        "entity_index",
+                        &[
+                            ("entity_key", key.clone()),
+                            ("observation", encode_hex(&encode(observation)?)),
+                        ],
+                    )?;
+                    create_node(
+                        connection,
+                        "entity_history_index",
+                        &[
+                            ("row_key", format!("{key}:{operation_key}")),
+                            ("entity_key", key),
+                            ("operation_id", operation_key.clone()),
+                        ],
+                    )?;
+                }
+                Fact::EventRecorded(event) => {
+                    let event_key = encode_key(&event.id)?;
+                    create_node(
+                        connection,
+                        "event_index",
+                        &[
+                            ("event_id", event_key.clone()),
+                            ("event", encode_hex(&encode(event)?)),
+                            ("operation_id", operation_key.clone()),
+                        ],
+                    )?;
+                    for relation in &event.relations {
+                        let from_key = encode_key(&relation.from)?;
+                        let to_key = encode_key(&relation.to)?;
+                        ensure_graph_node(connection, &from_key)?;
+                        ensure_graph_node(connection, &to_key)?;
+                        let edge = GraphEdge {
+                            relation: relation.clone(),
+                            event: event.id.clone(),
+                            operation: operation.id.clone(),
+                        };
+                        connection.query(&format!(
+                            "MATCH (a:graph_node), (b:graph_node) WHERE a.entity_key = {} AND b.entity_key = {} CREATE (a)-[:graph_edge {{edge_key: {}, edge: {}}}]->(b);",
+                            literal(&from_key),
+                            literal(&to_key),
+                            literal(&encode_key(&edge)?),
+                            literal(&encode_hex(&encode(&edge)?)),
+                        ))?;
+                    }
+                    let mut entities = event.subjects.clone();
+                    for relation in &event.relations {
+                        entities.insert(relation.from.clone());
+                        entities.insert(relation.to.clone());
+                    }
+                    for entity in entities {
+                        create_node(
+                            connection,
+                            "event_entity_index",
+                            &[
+                                ("row_key", format!("{event_key}:{}", encode_key(&entity)?)),
+                                ("event_id", event_key.clone()),
+                                ("entity_key", encode_key(&entity)?),
+                            ],
+                        )?;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn delete_node(
+    connection: &Connection<'_>,
+    table: &str,
+    field: &str,
+    value: &str,
+) -> Result<(), LbugStorageError> {
+    connection.query(&format!(
+        "MATCH (n:{table}) WHERE n.{field} = {} DELETE n;",
+        literal(value)
+    ))?;
+    Ok(())
+}
+
+fn ensure_graph_node(
+    connection: &Connection<'_>,
+    entity_key: &str,
+) -> Result<(), LbugStorageError> {
+    let existing = query_strings(
+        connection,
+        &format!(
+            "MATCH (n:graph_node) WHERE n.entity_key = {} RETURN n.entity_key;",
+            literal(entity_key)
+        ),
+    )?;
+    if existing.is_empty() {
+        create_node(
+            connection,
+            "graph_node",
+            &[("entity_key", entity_key.to_owned())],
+        )?;
     }
     Ok(())
 }
