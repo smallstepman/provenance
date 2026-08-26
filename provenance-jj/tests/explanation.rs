@@ -9,12 +9,6 @@ use provenance_core::{
     SchemaVersion, Transaction, Value, ValueType,
 };
 
-#[cfg(feature = "sqlite-index")]
-use provenance_core::QueryEngine;
-#[cfg(feature = "sqlite-index")]
-use provenance_indexing_backend::implementation::sqlite::SqliteIndex;
-#[cfg(feature = "sqlite-index")]
-use provenance_jj::JjModel;
 use provenance_jj::{compile_why, external, jj_commit, why_jj_commit};
 
 #[test]
@@ -23,31 +17,6 @@ fn why_uri_compiles_to_generic_explain_query() {
         compile_why("jj://commit/abc123").expect("compile why URI"),
         why_jj_commit("abc123")
     );
-}
-
-#[cfg(feature = "sqlite-index")]
-#[test]
-fn sqlite_index_executes_generic_why_for_jj_model() {
-    let fixture = support::Fixture::new();
-    fixture.write_file("README", "indexed\n");
-    fixture.commit("indexed");
-    let commit_id = fixture.head_commit();
-    let mut service = fixture.service();
-    fixture.ingest(&mut service);
-
-    let operations = service
-        .state
-        .operations
-        .iter()
-        .map(|(_, operation)| operation.clone())
-        .collect::<Vec<_>>();
-    let mut index = SqliteIndex::<JjModel>::in_memory().expect("open SQLite index");
-    index.rebuild(&operations).expect("rebuild SQLite index");
-
-    let result = index
-        .execute(&why_jj_commit(&commit_id))
-        .expect("execute indexed why query");
-    assert!(result.entities.contains(&jj_commit(commit_id)));
 }
 
 #[test]

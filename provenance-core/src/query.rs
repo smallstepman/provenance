@@ -1,7 +1,7 @@
 //! Declarative query types and the pure reference query engine.
 
+use crate::Result;
 use crate::state::{Fact, GraphEdge, Projection, State, find_relation_schema, matches_entity_type};
-use crate::{Error, Result};
 use provenance_data_model::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, VecDeque};
@@ -375,28 +375,5 @@ fn predicate_matches<M: Model>(
             .iter()
             .any(|predicate| predicate_matches(projection, entity, predicate)),
         Predicate::Not(predicate) => !predicate_matches(projection, entity, predicate),
-    }
-}
-
-// =============================================================================
-
-// QUERY EXECUTION ABSTRACTION
-// =============================================================================
-
-/// The pure State implementation above is the reference semantics.
-///
-/// Production indexes can implement this trait using SQLite, DuckDB, remote
-/// query services, etc.
-///
-/// They must return equivalent semantic results.
-pub trait QueryEngine<M: Model> {
-    type Error;
-    fn execute(&self, query: &Query<M>) -> std::result::Result<QueryResult<M>, Self::Error>;
-}
-
-impl<M: Model> QueryEngine<M> for State<M> {
-    type Error = Error;
-    fn execute(&self, query: &Query<M>) -> Result<QueryResult<M>> {
-        self.query(query)
     }
 }

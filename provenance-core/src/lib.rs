@@ -298,7 +298,7 @@ pub use state::*;
 //     persistence
 //     retention roots
 //     operation heads
-//     query indexes
+//     derived query state
 //     authoritative state mutation
 //
 // They propose typed semantic Transactions.
@@ -319,10 +319,10 @@ pub use state::*;
 //
 //     entities
 //     graph edges
-//     schemas indexes
+//     schemas
 //     active retention
-//     query indexes
-//     full text indexes
+//     derived query state
+//     full-text search state
 //
 // can be rebuilt from the Operation DAG.
 //

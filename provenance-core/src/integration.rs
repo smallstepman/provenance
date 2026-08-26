@@ -59,9 +59,9 @@ pub enum PublishOutcome {
 }
 
 /// Authoritative immutable provenance operation/object storage.
-///
-/// Implementations own persistence and concurrency. Indexes and projections
-/// may be rebuilt from this interface and must not replace it as authority.
+
+/// Implementations own persistence and concurrency. Derived projections may be
+/// rebuilt from this interface and must not replace it as authority.
 pub trait ProvenanceStore<M: Model> {
     type Error;
     fn get_operation(

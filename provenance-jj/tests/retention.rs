@@ -4,8 +4,6 @@ use provenance_core::{
     Attributes, EventIntent, Intent, Operation, OperationId, ProvenanceStore, Resource,
     ResourceRequirement, RetentionStrength, Runtime, Transaction,
 };
-#[cfg(feature = "sqlite-index")]
-use provenance_indexing_backend::implementation::sqlite::SqliteIndex;
 use provenance_jj::{DirectoryProvenanceStore, JjRuntime, JjRuntimeError, jj_commit, open_service};
 use std::collections::BTreeSet;
 use std::thread;
@@ -209,41 +207,6 @@ fn concurrent_store_publish_of_same_operation_is_idempotent() {
         runtime.store().heads().expect("authoritative heads").len(),
         1
     );
-}
-
-#[cfg(feature = "sqlite-index")]
-#[test]
-fn authoritative_reload_does_not_require_sqlite_index() {
-    let fixture = support::Fixture::new();
-    fixture.write_file("README", "reload\n");
-    fixture.commit("reload");
-    let store_path = fixture.dir.path().join(".jj").join("provenance");
-    let repository = fixture.repository();
-    let mut service = open_service(&repository, &store_path).expect("open runtime");
-    fixture.ingest(&mut service);
-    let expected = service.state.clone();
-    drop(service);
-
-    let index_path = fixture.dir.path().join(".jj").join("query-index.sqlite");
-    let mut index = SqliteIndex::<provenance_jj::JjModel>::open(&index_path).expect("open index");
-    let runtime = JjRuntime::open(repository.repo().clone(), &store_path).expect("reopen runtime");
-    let operations = runtime
-        .load_state()
-        .expect("load authoritative state")
-        .operations
-        .iter()
-        .map(|(_, operation)| operation.clone())
-        .collect::<Vec<_>>();
-    index.rebuild_from(runtime.store()).expect("build index");
-    assert_eq!(
-        index.operation_count().expect("index count"),
-        operations.len()
-    );
-    std::fs::remove_file(index_path).expect("delete disposable index");
-
-    let repository = fixture.repository();
-    let recovered = open_service(&repository, &store_path).expect("reload without index");
-    assert_eq!(recovered.state, expected);
 }
 
 #[test]

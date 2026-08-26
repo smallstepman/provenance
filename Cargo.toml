@@ -2,7 +2,6 @@
 members = [
     "provenance-core",
     "provenance-data-model",
-    "provenance-indexing-backend",
     "provenance-jj",
     "provenance-plugin",
     "provenance-plugin/examples/hello",

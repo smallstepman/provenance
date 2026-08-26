@@ -7,16 +7,8 @@ edition = "2024"
 name = "provenance_jj"
 path = "src/lib.rs"
 
-[features]
-default = []
-sqlite-index = [
-    "dep:provenance-indexing-backend",
-    "provenance-indexing-backend/sqlite",
-]
-
 [dependencies]
 provenance-core = { path = "../provenance-core" }
-provenance-indexing-backend = { path = "../provenance-indexing-backend", optional = true }
 jj-lib = { version = "0.44", default-features = true }
 gix = { version = "0.85", default-features = false, features = ["parallel", "sha1", "sha256", "zlib-rs"] }
 pollster = "0.4"
