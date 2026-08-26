@@ -2154,6 +2154,7 @@ dependencies = [
  "provenance-data-model",
  "serde",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -2177,6 +2178,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -2188,6 +2190,7 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror",
+ "tracing",
  "wasmtime",
  "wit-bindgen",
  "wit-component 0.254.0",

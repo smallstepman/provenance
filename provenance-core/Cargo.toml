@@ -11,3 +11,4 @@ path = "src/lib.rs"
 provenance-data-model = { path = "../provenance-data-model" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
+tracing = "0.1"

@@ -24,6 +24,7 @@ pub fn jj_entity(uri: impl AsRef<str>) -> Result<EntityRef<crate::JjModel>, JjQu
 }
 
 /// Compiles `why jj://...` input into the generic `Query::Explain` variant.
+#[tracing::instrument(level = "debug", skip_all, err(level = tracing::Level::DEBUG))]
 pub fn compile_why(uri: impl AsRef<str>) -> Result<Query<crate::JjModel>, JjQueryError> {
     Ok(why_entity(jj_entity(uri)?))
 }

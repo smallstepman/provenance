@@ -20,6 +20,7 @@ pub enum JjIngestError {
 /// Existing source anchors are skipped before adapter work. This makes repeat
 /// ingestion proportional to newly observed JJ operations rather than replaying
 /// the entire ancestry through the adapter on every invocation.
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub fn ingest_repository(
     service: &mut Service<JjModel, JjIdentity, DefaultRules, JjAdapter, JjRuntime>,
     repository: &JjRepository,

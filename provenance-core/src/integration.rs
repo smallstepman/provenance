@@ -139,6 +139,7 @@ where
     A: Adapter<M>,
     RT: Runtime<M>,
 {
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn process(
         &mut self,
         input: A::Input,

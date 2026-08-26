@@ -184,6 +184,7 @@ impl Adapter<JjModel> for JjAdapter {
 }
 
 /// Observes the current JJ world as a provenance-core transaction.
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub fn observe_repository<R: JjRepositorySource>(
     repo: &R,
 ) -> Result<Transaction<JjModel>, JjAdapterError> {

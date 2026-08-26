@@ -56,6 +56,7 @@ impl JjRuntime {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn open(repo: Arc<ReadonlyRepo>, path: impl AsRef<Path>) -> Result<Self, JjRuntimeError> {
         let mut runtime = Self {
             retention: JjRetention::new(repo),
@@ -93,6 +94,7 @@ impl JjRuntime {
     }
 
     /// Reconcile physical retention from authoritative provenance state.
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn reconcile(&mut self) -> Result<(), JjRuntimeError> {
         let state = self.load_state()?;
         let requirements = state

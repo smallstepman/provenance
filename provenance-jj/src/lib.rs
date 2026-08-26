@@ -41,6 +41,7 @@ pub enum JjServiceError {
     Core(#[from] provenance_core::Error),
 }
 
+#[tracing::instrument(level = "debug", skip_all, err)]
 pub fn open_service(
     repository: &JjRepository,
     store_path: impl AsRef<Path>,

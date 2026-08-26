@@ -513,6 +513,7 @@ impl<M: Model> State<M> {
     pub fn has_source(&self, source: &EntityAddress<M>) -> bool {
         self.operation_for_source(source).is_some()
     }
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn rebuild(&mut self) -> Result<()> {
         let mut projection = Projection::default();
         let ordered = topological_operations(&self.operations)?;

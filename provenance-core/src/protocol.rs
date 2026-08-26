@@ -209,6 +209,7 @@ where
     // TRANSACTION
     // =========================================================================
 
+    #[tracing::instrument(level = "debug", skip_all, err(level = tracing::Level::DEBUG))]
     pub fn transact(&self, state: &State<M>, tx: Transaction<M>) -> Result<CommitPlan<M>> {
         let operation_id = self.ids.operation(&tx.seed);
         let SourceResolution(source, operation_parents, inherited_event_parents) =
@@ -699,6 +700,7 @@ where
     // DISTRIBUTED MERGE
     // =========================================================================
 
+    #[tracing::instrument(level = "debug", skip_all, err(level = tracing::Level::DEBUG))]
     pub fn merge(&self, left: &State<M>, right: &State<M>) -> Result<State<M>> {
         let mut merged = left.clone();
         for (id, operation) in right.operations.iter() {
@@ -713,6 +715,7 @@ where
     // QUERY VALIDATION / NAMED QUERY EXPANSION
     // =========================================================================
 
+    #[tracing::instrument(level = "debug", skip_all, err(level = tracing::Level::DEBUG))]
     pub fn instantiate_named_query(
         &self,
         state: &State<M>,

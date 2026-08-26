@@ -143,6 +143,7 @@ impl<M: Model> Default for QueryResult<M> {
 // =============================================================================
 
 impl<M: Model> State<M> {
+    #[tracing::instrument(level = "debug", skip_all, err(level = tracing::Level::DEBUG))]
     pub fn query(&self, query: &Query<M>) -> Result<QueryResult<M>> {
         match query {
             Query::Lookup { entity } => {

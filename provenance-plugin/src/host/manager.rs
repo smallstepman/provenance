@@ -92,6 +92,7 @@ impl Default for PluginManager {
 }
 
 impl PluginManager {
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn new() -> Result<Self, PluginHostError> {
         let mut config = Config::new();
         config.wasm_component_model(true);
@@ -103,6 +104,7 @@ impl PluginManager {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn register_component(
         &mut self,
         component_bytes: &[u8],
@@ -139,6 +141,7 @@ impl PluginManager {
         self.plugins.keys().map(String::as_str)
     }
 
+    #[tracing::instrument(level = "debug", skip_all, err)]
     pub fn observe(
         &self,
         plugin_id: &str,
@@ -220,6 +223,7 @@ impl Adapter<PluginModel> for WasmPluginAdapter {
     type Input = bindings::ObservationRequest;
     type Error = PluginHostError;
 
+    #[tracing::instrument(level = "debug", skip_all, err)]
     fn transaction(&self, input: Self::Input) -> Result<Transaction<PluginModel>, Self::Error> {
         let linker = Linker::new(&self.engine);
         let mut store = Store::new(&self.engine, ());
