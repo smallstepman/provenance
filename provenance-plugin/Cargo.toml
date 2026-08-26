@@ -1,0 +1,21 @@
+[package]
+name = "provenance-plugin"
+version = "0.1.0"
+edition = "2024"
+description = "WASM plugin loading and provenance transaction bridge"
+license = "MIT"
+
+[features]
+default = []
+guest = ["dep:wit-bindgen"]
+
+[dependencies]
+provenance-core = { path = "../provenance-core" }
+provenance-data-model = { path = "../provenance-data-model" }
+wasmtime = { version = "48", default-features = false, features = ["component-model", "cranelift", "runtime", "wat"] }
+serde = { version = "1", features = ["derive"] }
+wit-bindgen = { version = "0.61", optional = true }
+thiserror = "2"
+[dev-dependencies]
+tempfile = "3"
+wit-component = "0.254"

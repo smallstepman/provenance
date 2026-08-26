@@ -1,0 +1,388 @@
+package provenance:plugin@0.1.0;
+
+world plugin {
+  /// A plugin's stable identity and declared semantic surface.
+  record plugin-manifest {
+    id: string,
+    abi-version: string,
+    namespace: string,
+    schemas: list<schema-key>,
+    required-schemas: list<schema-key>,
+    capabilities: list<string>,
+  }
+
+  /// The host supplies a source-specific observation request. The plugin
+  /// interprets the cursor and returns a typed transaction; it never receives
+  /// the host's authoritative state or persistence handles.
+  record observation-request {
+    source: entity-address,
+    cursor: option<string>,
+    attributes: list<attribute>,
+  }
+
+  record entity-address {
+    namespace: string,
+    kind: string,
+    id: string,
+  }
+
+  record entity-type {
+    namespace: string,
+    kind: string,
+  }
+
+  enum internal-entity-kind {
+    operation,
+    event,
+    session,
+    actor,
+    object,
+    replica,
+  }
+
+  variant entity-type-pattern {
+    internal(internal-entity-kind),
+    external(entity-type),
+    any,
+  }
+
+  variant internal-entity-ref {
+    operation(string),
+    event(string),
+    session(string),
+    actor(string),
+    object(string),
+    replica(string),
+  }
+
+  variant entity-ref {
+    internal(internal-entity-ref),
+    external(entity-address),
+  }
+
+  record node-entity-type {
+    namespace: option<string>,
+    kind: string,
+  }
+
+  variant node-type {
+    entity(node-entity-type),
+    activity(node-entity-type),
+    agent(node-entity-type),
+    assertion,
+    external(entity-type),
+    any,
+  }
+
+  variant node-ref {
+    entity(string),
+    activity(string),
+    agent(string),
+    external(entity-address),
+    assertion(string),
+  }
+
+  /// Value type descriptors are finite because WIT does not allow recursive
+  /// inline component types. Lists and maps contain scalar values; nested
+  /// structures can be added in a future ABI version without changing the
+  /// scalar wire representation.
+  variant scalar-value-type {
+    null-value,
+    boolean,
+    integer,
+    decimal,
+    string-value,
+    bytes-value,
+    entity-value(entity-type-pattern),
+    ref-value(node-type),
+    any-value,
+  }
+
+  record field-schema {
+    value-type: value-type,
+    required: bool,
+  }
+
+  record field-definition {
+    name: string,
+    schema: field-schema,
+  }
+
+  record scalar-field-definition {
+    name: string,
+    value-type: scalar-value-type,
+    required: bool,
+  }
+
+  record map-type {
+    fields: list<scalar-field-definition>,
+    allow-unknown: bool,
+  }
+
+  variant value-type {
+    null-value,
+    boolean,
+    integer,
+    decimal,
+    string-value,
+    bytes-value,
+    entity-value(entity-type-pattern),
+    ref-value(node-type),
+    list-value(scalar-value-type),
+    map-value(map-type),
+    any-value,
+  }
+
+  variant scalar-value {
+    null-value,
+    boolean(bool),
+    integer-text(string),
+    decimal-text(string),
+    string-value(string),
+    bytes-value(list<u8>),
+    entity-value(entity-ref),
+    ref-value(node-ref),
+  }
+
+  record scalar-attribute {
+    name: string,
+    value: scalar-value,
+  }
+
+  record attribute {
+    name: string,
+    value: value,
+  }
+
+  variant value {
+    null-value,
+    boolean(bool),
+    /// Integer text preserves the core's i128 range without ABI narrowing.
+    integer-text(string),
+    decimal-text(string),
+    string-value(string),
+    bytes-value(list<u8>),
+    entity-value(entity-ref),
+    ref-value(node-ref),
+    list-value(list<scalar-value>),
+    map-value(list<scalar-attribute>),
+  }
+
+  record schema-key {
+    namespace: string,
+    version: string,
+  }
+
+  record entity-schema {
+    kind: string,
+    fields: list<field-definition>,
+    allow-unknown-fields: bool,
+  }
+
+  record explanation-semantics {
+    role: explanation-role,
+    direction: explanation-direction,
+  }
+
+  enum explanation-role {
+    primary,
+    supporting,
+    contextual,
+    causal,
+    contradicting,
+    invalidating,
+    attribution,
+    influence,
+  }
+
+  enum explanation-direction {
+    source-explains-target,
+    target-explains-source,
+    symmetric,
+    subject-explains-by-object,
+    object-explains-by-subject,
+  }
+
+  record relation-type {
+    namespace: string,
+    name: string,
+  }
+
+  record relation-schema {
+    relation-type: relation-type,
+    source: entity-type-pattern,
+    target: entity-type-pattern,
+    explanation: option<explanation-semantics>,
+  }
+
+  record schema-definition {
+    key: schema-key,
+    requires: list<schema-key>,
+    entities: list<entity-schema>,
+    relations: list<relation-schema>,
+  }
+
+  record entity-observation {
+    entity: entity-address,
+    schema: schema-key,
+    attributes: list<attribute>,
+  }
+  record relation {
+    schema: schema-key,
+    relation-type: relation-type,
+    source: entity-ref,
+    target: entity-ref,
+    attributes: list<attribute>,
+  }
+
+  enum retention-strength {
+    referenced,
+    pinned,
+    escrowed,
+  }
+
+  record resource-requirement {
+    target: entity-ref,
+    strength: retention-strength,
+  }
+
+  record event-intent {
+    session: option<string>,
+    actor: option<string>,
+    additional-parents: list<string>,
+    subjects: list<entity-ref>,
+    relations: list<relation>,
+    requires: list<resource-requirement>,
+    attributes: list<attribute>,
+  }
+
+  record open-session {
+    seed: string,
+    parent: option<string>,
+    attributes: list<attribute>,
+  }
+
+  record declare-actor {
+    seed: string,
+    session: option<string>,
+    attributes: list<attribute>,
+  }
+
+  record put-object {
+    seed: string,
+    payload: list<u8>,
+    attributes: list<attribute>,
+  }
+
+  record declare-replica {
+    seed: string,
+    attributes: list<attribute>,
+  }
+
+  variant availability {
+    unknown,
+    local,
+    remote(list<string>),
+    missing,
+  }
+
+  enum integrity {
+    unknown,
+    unverified,
+    verified,
+    invalid,
+  }
+
+  record resource-observation {
+    availability: availability,
+    integrity: integrity,
+    observed-retention: option<retention-strength>,
+  }
+
+  record observe-resource {
+    target: entity-ref,
+    observation: resource-observation,
+  }
+
+  record query-key {
+    namespace: string,
+    version: string,
+    name: string,
+  }
+
+  variant query-template {
+    history,
+    explain(explain-query),
+    traverse(traverse-query),
+  }
+
+  record explain-query {
+    max-depth: option<u64>,
+    roles: list<explanation-role>,
+  }
+
+  record traverse-query {
+    direction: direction,
+    relations: relation-selector,
+    max-depth: option<u64>,
+  }
+
+  enum direction {
+    incoming,
+    outgoing,
+    both,
+  }
+
+  variant relation-selector {
+    any,
+    types(list<relation-type>),
+    explanatory,
+  }
+
+  record named-query-definition {
+    key: query-key,
+    input: entity-type-pattern,
+    template: query-template,
+  }
+
+  variant intent {
+    register-schema(schema-definition),
+    register-named-query(named-query-definition),
+    open-session(open-session),
+    end-session(string),
+    declare-actor(declare-actor),
+    put-object(put-object),
+    observe-entity(entity-observation),
+    record-event(event-intent),
+    release-retention(string),
+    declare-replica(declare-replica),
+    observe-resource(observe-resource),
+  }
+
+  record source-operation {
+    id: entity-address,
+    parents: list<entity-address>,
+  }
+
+  record transaction {
+    seed: string,
+    source: option<source-operation>,
+    intents: list<intent>,
+    attributes: list<attribute>,
+  }
+
+  enum plugin-error-kind {
+    invalid-request,
+    unsupported,
+    source-failure,
+    internal,
+  }
+
+  record plugin-error {
+    kind: plugin-error-kind,
+    message: string,
+  }
+
+  export manifest: func() -> plugin-manifest;
+  export observe: func(request: observation-request) -> result<transaction, plugin-error>;
+}

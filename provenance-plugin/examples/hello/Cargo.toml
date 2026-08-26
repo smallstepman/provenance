@@ -1,0 +1,11 @@
+[package]
+name = "provenance-plugin-hello"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.61"

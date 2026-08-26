@@ -4,5 +4,7 @@ members = [
     "provenance-data-model",
     "provenance-indexing-backend",
     "provenance-jj",
+    "provenance-plugin",
+    "provenance-plugin/examples/hello",
 ]
 resolver = "3"

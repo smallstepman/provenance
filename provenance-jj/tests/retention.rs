@@ -5,7 +5,7 @@ use provenance_core::{
     ResourceRequirement, RetentionStrength, Runtime, Transaction,
 };
 #[cfg(feature = "sqlite-index")]
-use provenance_indexing_backend::SqliteIndex;
+use provenance_indexing_backend::implementation::sqlite::SqliteIndex;
 use provenance_jj::{DirectoryProvenanceStore, JjRuntime, JjRuntimeError, jj_commit, open_service};
 use std::collections::BTreeSet;
 use std::thread;

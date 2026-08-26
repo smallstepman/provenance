@@ -12,7 +12,7 @@ use provenance_core::{
 #[cfg(feature = "sqlite-index")]
 use provenance_core::QueryEngine;
 #[cfg(feature = "sqlite-index")]
-use provenance_indexing_backend::SqliteIndex;
+use provenance_indexing_backend::implementation::sqlite::SqliteIndex;
 #[cfg(feature = "sqlite-index")]
 use provenance_jj::JjModel;
 use provenance_jj::{compile_why, external, jj_commit, why_jj_commit};
