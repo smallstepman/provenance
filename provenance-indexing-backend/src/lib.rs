@@ -6,7 +6,7 @@
 //! the generic [`ProjectionIndex`] supplies rebuild, source-store traversal,
 //! and query execution consistently across those engines.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
@@ -19,19 +19,20 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
+#[cfg(all(feature = "sqlite", feature = "duckdb"))]
+compile_error!("features `sqlite` and `duckdb` are mutually exclusive");
+
 pub mod implementation;
 
-#[cfg(any(
-    feature = "sqlite",
-    feature = "duckdb",
-    feature = "doltlite",
-    feature = "turso",
-    feature = "lbug",
-    feature = "redb",
-    feature = "heed",
-    feature = "mnestic",
-))]
-pub use implementation::{BackendIndex, BackendIndexError, BackendStorage, BackendStorageError};
+#[cfg(feature = "sqlite")]
+pub use implementation::sqlite::{
+    SqliteIndex, SqliteIndexError, SqliteStorage, SqliteStorageError,
+};
+
+#[cfg(feature = "duckdb")]
+pub use implementation::duckdb::{
+    DuckDbIndex, DuckDbIndexError, DuckDbStorage, DuckDbStorageError,
+};
 
 /// Models supported by a serialized projection storage boundary.
 ///
@@ -91,30 +92,12 @@ where
 
     /// Atomically replace all disposable projection data with this state.
     fn replace(&mut self, state: &State<M>) -> Result<(), Self::Error>;
-    /// Apply newly reachable operations without rebuilding existing rows.
-    ///
-    /// The default preserves compatibility for backends that have not yet
-    /// specialized their write path. Concrete backends should override this
-    /// with a single transaction over only `operations`.
-    fn apply_delta(
-        &mut self,
-        _operations: &[Operation<M>],
-        state: &State<M>,
-    ) -> Result<(), Self::Error> {
-        self.replace(state)
-    }
-
-    fn operation_count(&self) -> Result<usize, Self::Error>;
 
     /// Delete all disposable projection data while leaving the authoritative
     /// operation store untouched.
     fn clear(&mut self) -> Result<(), Self::Error>;
 
-    /// Load the operations already represented by the disposable projection.
-    ///
-    /// This lets an index reconstruct its in-memory state after reopening a
-    /// persisted backend without replaying the authoritative source.
-    fn indexed_operations(&self) -> Result<Vec<Operation<M>>, Self::Error>;
+    fn operation_count(&self) -> Result<usize, Self::Error>;
 
     fn contains(&self, operation_id: &OperationId<M>) -> Result<bool, Self::Error>;
 
@@ -164,7 +147,6 @@ where
     S: ProjectionStorage<M>,
 {
     storage: S,
-    state: Option<State<M>>,
     marker: PhantomData<M>,
 }
 
@@ -181,7 +163,6 @@ where
     pub fn new(storage: S) -> Self {
         Self {
             storage,
-            state: None,
             marker: PhantomData,
         }
     }
@@ -206,67 +187,7 @@ where
         let state = state_from_operations(operations).map_err(ProjectionIndexError::Core)?;
         self.storage
             .replace(&state)
-            .map_err(ProjectionIndexError::Storage)?;
-        self.state = Some(state);
-        Ok(())
-    }
-
-    /// Apply only operations that are newly reachable from the authoritative
-    /// store. If the in-memory state is absent, hydrate it from indexed
-    /// operations before applying the delta. The cache is discarded on
-    /// failure so the next attempt reconstructs it from durable storage.
-    pub fn update_from<T>(&mut self, store: &T) -> Result<(), ProjectionIndexError<S::Error>>
-    where
-        T: provenance_core::ProvenanceStore<M>,
-        T::Error: Display,
-    {
-        let operations = reachable_operations(store).map_err(|error| match error {
-            ReachableOperationsError::Authority(message) => {
-                ProjectionIndexError::Authority(message)
-            }
-        })?;
-
-        let mut state = match self.state.take() {
-            Some(state) => state,
-            None => {
-                let indexed = self
-                    .storage
-                    .indexed_operations()
-                    .map_err(ProjectionIndexError::Storage)?;
-                state_from_operations(&indexed).map_err(ProjectionIndexError::Core)?
-            }
-        };
-
-        let reachable_ids = operations
-            .iter()
-            .map(|operation| operation.id.clone())
-            .collect::<BTreeSet<_>>();
-        if state
-            .operations
-            .keys()
-            .any(|operation_id| !reachable_ids.contains(operation_id))
-        {
-            return self.rebuild(&operations);
-        }
-
-        let missing =
-            topologically_order_missing(&operations, &state).map_err(ProjectionIndexError::Core)?;
-        if missing.is_empty() {
-            self.state = Some(state);
-            return Ok(());
-        }
-
-        for operation in &missing {
-            if let Err(error) = state.apply_operation(operation.clone()) {
-                return Err(ProjectionIndexError::Core(error));
-            }
-        }
-
-        if let Err(error) = self.storage.apply_delta(&missing, &state) {
-            return Err(ProjectionIndexError::Storage(error));
-        }
-        self.state = Some(state);
-        Ok(())
+            .map_err(ProjectionIndexError::Storage)
     }
 
     /// Rebuild from the reachable history of any authoritative operation
@@ -285,11 +206,7 @@ where
     }
 
     pub fn clear(&mut self) -> Result<(), ProjectionIndexError<S::Error>> {
-        self.storage
-            .clear()
-            .map_err(ProjectionIndexError::Storage)?;
-        self.state = None;
-        Ok(())
+        self.storage.clear().map_err(ProjectionIndexError::Storage)
     }
 
     pub fn operation_count(&self) -> Result<usize, ProjectionIndexError<S::Error>> {
@@ -544,13 +461,6 @@ where
     where
         T: provenance_core::ProvenanceStore<M>,
         T::Error: Display;
-    fn update_from<T>(&mut self, store: &T) -> Result<(), Self::Error>
-    where
-        T: provenance_core::ProvenanceStore<M>,
-        T::Error: Display,
-    {
-        self.rebuild_from(store)
-    }
 
     fn clear(&mut self) -> Result<(), Self::Error>;
 
@@ -579,14 +489,6 @@ where
         T::Error: Display,
     {
         ProjectionIndex::rebuild_from(self, store)
-    }
-
-    fn update_from<T>(&mut self, store: &T) -> Result<(), Self::Error>
-    where
-        T: provenance_core::ProvenanceStore<M>,
-        T::Error: Display,
-    {
-        ProjectionIndex::update_from(self, store)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
@@ -669,62 +571,6 @@ where
     }
 
     Ok(operations)
-}
-
-fn topologically_order_missing<M: Model>(
-    operations: &[Operation<M>],
-    state: &State<M>,
-) -> Result<Vec<Operation<M>>, provenance_core::Error> {
-    let missing = operations
-        .iter()
-        .filter(|operation| !state.operations.contains(&operation.id))
-        .map(|operation| (operation.id.clone(), operation.clone()))
-        .collect::<BTreeMap<_, _>>();
-    let missing_ids = missing.keys().cloned().collect::<BTreeSet<_>>();
-    let mut indegree = BTreeMap::<OperationId<M>, usize>::new();
-    let mut children = BTreeMap::<OperationId<M>, BTreeSet<OperationId<M>>>::new();
-
-    for operation in missing.values() {
-        indegree.insert(operation.id.clone(), 0);
-    }
-    for operation in missing.values() {
-        for parent in &operation.parents {
-            if missing_ids.contains(parent) {
-                *indegree.get_mut(&operation.id).unwrap() += 1;
-                children
-                    .entry(parent.clone())
-                    .or_default()
-                    .insert(operation.id.clone());
-            } else if !state.operations.contains(parent) {
-                return Err(provenance_core::Error::MissingOperationParent);
-            }
-        }
-    }
-
-    let mut ready = VecDeque::new();
-    for (id, degree) in &indegree {
-        if *degree == 0 {
-            ready.push_back(id.clone());
-        }
-    }
-
-    let mut ordered = Vec::with_capacity(missing.len());
-    while let Some(id) = ready.pop_front() {
-        ordered.push(missing.get(&id).unwrap().clone());
-        if let Some(child_ids) = children.get(&id) {
-            for child_id in child_ids {
-                let degree = indegree.get_mut(child_id).unwrap();
-                *degree -= 1;
-                if *degree == 0 {
-                    ready.push_back(child_id.clone());
-                }
-            }
-        }
-    }
-    if ordered.len() != missing.len() {
-        return Err(provenance_core::Error::OperationCycle);
-    }
-    Ok(ordered)
 }
 
 fn matches_entity_type<M: Model>(entity: &EntityRef<M>, expected: &EntityTypePattern) -> bool {

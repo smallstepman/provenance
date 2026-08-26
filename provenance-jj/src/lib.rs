@@ -17,7 +17,7 @@ mod schema;
 
 pub use adapter::{
     JjAdapter, JjAdapterError, JjRepository, JjRepositoryError, JjRepositorySource,
-    observe_operation_delta, observe_repository,
+    observe_repository,
 };
 pub use authoritative::{DirectoryProvenanceStore, DirectoryStoreError};
 pub use identity::{JjIdentity, observation_seed};

@@ -190,29 +190,10 @@ pub fn observe_repository<R: JjRepositorySource>(
     JjAdapter.transaction(repo.snapshot())
 }
 
-/// Observes one operation and only commit history not already known to the
-/// caller. The returned value is still a normal provenance transaction.
-pub fn observe_operation_delta(
-    repo: &JjRepository,
-    known_commits: &BTreeSet<String>,
-) -> Result<Transaction<JjModel>, JjAdapterError> {
-    observe_snapshot_with_known_commits(repo, Some(known_commits))
-}
-
 fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapterError> {
-    observe_snapshot_with_known_commits(repo, None)
-}
-
-fn observe_snapshot_with_known_commits(
-    repo: &JjRepository,
-    known_commits: Option<&BTreeSet<String>>,
-) -> Result<Transaction<JjModel>, JjAdapterError> {
     let current_operation = repo.repo.operation().clone();
     let current_operation_id = current_operation.id().hex();
-    let operations = match known_commits {
-        Some(_) => vec![current_operation.clone()],
-        None => repo.operation_ancestry()?,
-    };
+    let operations = repo.operation_ancestry()?;
 
     let mut commits = BTreeMap::<String, Commit>::new();
     let mut visible_commits = BTreeSet::<String>::new();
@@ -221,7 +202,6 @@ fn observe_snapshot_with_known_commits(
             repo.repo.store(),
             commit_id,
             true,
-            known_commits,
             &mut visible_commits,
             &mut commits,
         )?;
@@ -233,7 +213,6 @@ fn observe_snapshot_with_known_commits(
                 repo.repo.store(),
                 commit_id,
                 false,
-                known_commits,
                 &mut visible_commits,
                 &mut commits,
             )?;
@@ -245,7 +224,6 @@ fn observe_snapshot_with_known_commits(
             repo.repo.store(),
             commit_id,
             true,
-            known_commits,
             &mut visible_commits,
             &mut commits,
         )?;
@@ -444,7 +422,6 @@ fn collect_commit(
     store: &Arc<jj_lib::store::Store>,
     commit_id: &CommitId,
     visible: bool,
-    known_commits: Option<&BTreeSet<String>>,
     visible_commits: &mut BTreeSet<String>,
     commits: &mut BTreeMap<String, Commit>,
 ) -> Result<(), JjAdapterError> {
@@ -452,9 +429,7 @@ fn collect_commit(
     if visible {
         visible_commits.insert(id.clone());
     }
-    if commits.contains_key(&id)
-        || known_commits.is_some_and(|known_commits| known_commits.contains(&id))
-    {
+    if commits.contains_key(&id) {
         return Ok(());
     }
     let commit = store
@@ -463,14 +438,7 @@ fn collect_commit(
     let parents = commit.parent_ids().to_vec();
     commits.insert(id, commit);
     for parent_id in parents {
-        collect_commit(
-            store,
-            &parent_id,
-            visible,
-            known_commits,
-            visible_commits,
-            commits,
-        )?;
+        collect_commit(store, &parent_id, visible, visible_commits, commits)?;
     }
     Ok(())
 }
