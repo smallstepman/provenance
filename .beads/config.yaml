@@ -66,3 +66,11 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 dolt.shared-server: true
+issue-prefix: pr
+issue_prefix: pr
+dolt.mode: server
+dolt.auto-start: false
+dolt.host: 127.0.0.1
+dolt.port: 3995
+dolt.user: root
+dolt.database: pr
