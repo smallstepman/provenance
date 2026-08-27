@@ -3,12 +3,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::identity::observation_seed;
-use jj_lib::backend::CommitId;
+use jj_lib::backend::{ChangeId, CommitId};
 use jj_lib::commit::Commit;
 use jj_lib::default_backend_factories::{
     default_backend_factories, default_working_copy_factories,
 };
 use jj_lib::object_id::ObjectId;
+use jj_lib::op_store::OperationId;
 use jj_lib::operation::Operation;
 use jj_lib::repo::{ReadonlyRepo, Repo};
 use jj_lib::settings::UserSettings;
@@ -141,10 +142,10 @@ impl JjRepositorySource for Arc<ReadonlyRepo> {
 
 fn collect_operations(
     operation: &Operation,
-    seen: &mut BTreeSet<String>,
+    seen: &mut BTreeSet<OperationId>,
     ordered: &mut Vec<Operation>,
 ) -> Result<(), String> {
-    let operation_id = operation.id().hex();
+    let operation_id = operation.id().clone();
     if !seen.insert(operation_id) {
         return Ok(());
     }
@@ -193,11 +194,12 @@ pub fn observe_repository<R: JjRepositorySource>(
 
 fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapterError> {
     let current_operation = repo.repo.operation().clone();
-    let current_operation_id = current_operation.id().hex();
+    let current_operation_id = current_operation.id().clone();
+    let current_operation_name = current_operation_id.hex();
     let operations = repo.operation_ancestry()?;
 
-    let mut commits = BTreeMap::<String, Commit>::new();
-    let mut visible_commits = BTreeSet::<String>::new();
+    let mut commits = BTreeMap::<CommitId, Commit>::new();
+    let mut visible_commits = BTreeSet::<CommitId>::new();
     for commit_id in repo.repo.view().heads() {
         collect_commit(
             repo.repo.store(),
@@ -230,23 +232,22 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
         )?;
     }
 
-    let mut current_commits_by_change = BTreeMap::<String, String>::new();
+    let mut current_commits_by_change = BTreeMap::<ChangeId, CommitId>::new();
     // JJ records rewritten/new commit tips in each operation. Prefer the
     // newest operation's commit for a change; lexical ordering is only a
     // deterministic fallback for commits without operation metadata.
     for operation in &operations {
         if let Some(predecessors) = operation.store_operation().commit_predecessors.as_ref() {
             for commit_id in predecessors.keys() {
-                let commit_id = commit_id.hex();
-                if let Some(commit) = commits.get(&commit_id) {
-                    current_commits_by_change.insert(commit.change_id().reverse_hex(), commit_id);
+                if let Some(commit) = commits.get(commit_id) {
+                    current_commits_by_change.insert(commit.change_id().clone(), commit_id.clone());
                 }
             }
         }
     }
     for (commit_id, commit) in &commits {
         if visible_commits.contains(commit_id) {
-            let change_id = commit.change_id().reverse_hex();
+            let change_id = commit.change_id().clone();
             current_commits_by_change
                 .entry(change_id)
                 .and_modify(|existing| {
@@ -258,7 +259,7 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
         }
     }
     for (commit_id, commit) in &commits {
-        let change_id = commit.change_id().reverse_hex();
+        let change_id = commit.change_id().clone();
         current_commits_by_change
             .entry(change_id)
             .or_insert_with(|| commit_id.clone());
@@ -315,7 +316,8 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
 
     for (commit_id, commit) in &commits {
         let change_id = commit.change_id().reverse_hex();
-        let commit_address = jj_commit_address(commit_id.clone());
+        let commit_id_name = commit_id.hex();
+        let commit_address = jj_commit_address(commit_id_name.clone());
         let change_address = jj_change(change_id.clone());
         subjects.insert(external(commit_address.clone()));
         subjects.insert(external(change_address.clone()));
@@ -323,8 +325,8 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
             entity: commit_address.clone(),
             schema: schema.clone(),
             attributes: attributes([
-                ("commit_id", string_value(commit_id.clone())),
-                ("change_id", string_value(change_id.clone())),
+                ("commit_id", string_value(commit_id_name.clone())),
+                ("change_id", string_value(change_id)),
                 ("description", string_value(commit.description().to_owned())),
                 (
                     "author",
@@ -348,13 +350,14 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
     }
 
     for (change_id, commit_id) in &current_commits_by_change {
-        let current_commit = jj_commit_address(commit_id.clone());
-        let change_address = jj_change(change_id.clone());
+        let current_commit = jj_commit_address(commit_id.hex());
+        let change_id_name = change_id.reverse_hex();
+        let change_address = jj_change(change_id_name.clone());
         entity_observations.push(EntityObservation {
             entity: change_address.clone(),
             schema: schema.clone(),
             attributes: attributes([
-                ("change_id", string_value(change_id.clone())),
+                ("change_id", string_value(change_id_name)),
                 ("current_commit", Value::Entity(external(current_commit))),
             ]),
         });
@@ -390,7 +393,7 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
         .collect();
 
     let source = SourceOperation {
-        id: jj_operation(current_operation_id.clone()),
+        id: jj_operation(current_operation_name.clone()),
         parents: source_parents,
     };
 
@@ -412,7 +415,7 @@ fn observe_snapshot(repo: &JjRepository) -> Result<Transaction<JjModel>, JjAdapt
     .collect();
 
     Ok(Transaction {
-        seed: observation_seed(&current_operation_id),
+        seed: observation_seed(&current_operation_name),
         source: Some(source),
         intents,
         attributes: Attributes::new(),
@@ -423,21 +426,20 @@ fn collect_commit(
     store: &Arc<jj_lib::store::Store>,
     commit_id: &CommitId,
     visible: bool,
-    visible_commits: &mut BTreeSet<String>,
-    commits: &mut BTreeMap<String, Commit>,
+    visible_commits: &mut BTreeSet<CommitId>,
+    commits: &mut BTreeMap<CommitId, Commit>,
 ) -> Result<(), JjAdapterError> {
-    let id = commit_id.hex();
     if visible {
-        visible_commits.insert(id.clone());
+        visible_commits.insert(commit_id.clone());
     }
-    if commits.contains_key(&id) {
+    if commits.contains_key(commit_id) {
         return Ok(());
     }
     let commit = store
         .get_commit(commit_id)
         .map_err(|error| JjAdapterError::Commit(error.to_string()))?;
     let parents = commit.parent_ids().to_vec();
-    commits.insert(id, commit);
+    commits.insert(commit_id.clone(), commit);
     for parent_id in parents {
         collect_commit(store, &parent_id, visible, visible_commits, commits)?;
     }
