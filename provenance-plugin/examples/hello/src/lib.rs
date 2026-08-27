@@ -1,8 +1,9 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 extern crate alloc;
 
-use alloc::{vec, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 wit_bindgen::generate!({
     path: "../../wit",
     world: "plugin",
@@ -12,6 +13,28 @@ pub(crate) mod guest {
     pub(crate) use super::*;
 }
 struct HelloPlugin;
+
+fn requested_commit(request: &guest::ObservationRequest) -> Option<guest::EntityAddress> {
+    request
+        .attributes
+        .iter()
+        .find_map(|attribute| match &attribute.value {
+            guest::Value::EntityValue(guest::EntityRef::External(address))
+                if address.namespace == "jj" && address.kind == "commit" =>
+            {
+                Some(address.clone())
+            }
+            _ => None,
+        })
+}
+fn test_mode(request: &guest::ObservationRequest) -> Option<&str> {
+    request.attributes.iter().find_map(|attribute| {
+        (attribute.name == "test-mode").then_some(match &attribute.value {
+            guest::Value::StringValue(value) => value.as_str(),
+            _ => "",
+        })
+    })
+}
 
 impl Guest for HelloPlugin {
     fn manifest() -> guest::PluginManifest {
@@ -29,7 +52,7 @@ impl Guest for HelloPlugin {
     }
 
     fn observe(
-        _request: guest::ObservationRequest,
+        request: guest::ObservationRequest,
     ) -> Result<guest::Transaction, guest::PluginError> {
         let schema_key = guest::SchemaKey {
             namespace: "tracker".into(),
@@ -54,19 +77,38 @@ impl Guest for HelloPlugin {
             namespace: "tracker".into(),
             name: "linked-to".into(),
         };
+        let implemented_by_type = guest::RelationType {
+            namespace: "tracker".into(),
+            name: "implemented-by".into(),
+        };
+        let commit_type = guest::EntityType {
+            namespace: "jj".into(),
+            kind: "commit".into(),
+        };
         let schema = guest::SchemaDefinition {
             key: schema_key.clone(),
             requires: Vec::new(),
             entities: vec![task_schema],
-            relations: vec![guest::RelationSchema {
-                relation_type: relation_type.clone(),
-                source: guest::EntityTypePattern::External(task_type.clone()),
-                target: guest::EntityTypePattern::External(task_type),
-                explanation: Some(guest::ExplanationSemantics {
-                    role: guest::ExplanationRole::Supporting,
-                    direction: guest::ExplanationDirection::SourceExplainsTarget,
-                }),
-            }],
+            relations: vec![
+                guest::RelationSchema {
+                    relation_type: relation_type.clone(),
+                    source: guest::EntityTypePattern::External(task_type.clone()),
+                    target: guest::EntityTypePattern::External(task_type.clone()),
+                    explanation: Some(guest::ExplanationSemantics {
+                        role: guest::ExplanationRole::Supporting,
+                        direction: guest::ExplanationDirection::SourceExplainsTarget,
+                    }),
+                },
+                guest::RelationSchema {
+                    relation_type: implemented_by_type.clone(),
+                    source: guest::EntityTypePattern::External(task_type),
+                    target: guest::EntityTypePattern::External(commit_type.clone()),
+                    explanation: Some(guest::ExplanationSemantics {
+                        role: guest::ExplanationRole::Supporting,
+                        direction: guest::ExplanationDirection::TargetExplainsSource,
+                    }),
+                },
+            ],
         };
 
         let first = guest::EntityAddress {
@@ -86,17 +128,53 @@ impl Guest for HelloPlugin {
             target: guest::EntityRef::External(second.clone()),
             attributes: Vec::new(),
         };
+        let mut relations = vec![relation];
+        if let Some(commit) = requested_commit(&request) {
+            relations.push(guest::Relation {
+                schema: schema_key.clone(),
+                relation_type: implemented_by_type,
+                source: guest::EntityRef::External(first.clone()),
+                target: guest::EntityRef::External(commit),
+                attributes: Vec::new(),
+            });
+        }
+        let source = guest::EntityAddress {
+            namespace: if test_mode(&request) == Some("bad-source") {
+                "other".into()
+            } else {
+                request.source.namespace.clone()
+            },
+            kind: request.source.kind.clone(),
+            id: request.source.id.clone(),
+        };
+        let seed = if test_mode(&request) == Some("empty-seed") {
+            String::new()
+        } else {
+            format!(
+                "hello-observation\0{}\0{}\0{}",
+                source.namespace, source.kind, source.id
+            )
+        };
+        let source_parents = if test_mode(&request) == Some("bad-parent") {
+            vec![guest::EntityAddress {
+                namespace: "other".into(),
+                kind: "event".into(),
+                id: "foreign-parent".into(),
+            }]
+        } else {
+            Vec::new()
+        };
 
         Ok(guest::Transaction {
-            seed: "hello-observation".into(),
-            source: Some(guest::SourceOperation {
-                id: guest::EntityAddress {
-                    namespace: "tracker".into(),
-                    kind: "event".into(),
-                    id: "hello-1".into(),
-                },
-                parents: Vec::new(),
-            }),
+            seed,
+            source: if test_mode(&request) == Some("empty-source") {
+                None
+            } else {
+                Some(guest::SourceOperation {
+                    id: source,
+                    parents: source_parents,
+                })
+            },
             intents: vec![
                 guest::Intent::RegisterSchema(schema),
                 guest::Intent::ObserveEntity(guest::EntityObservation {
@@ -120,7 +198,7 @@ impl Guest for HelloPlugin {
                     actor: None,
                     additional_parents: Vec::new(),
                     subjects: vec![guest::EntityRef::External(first)],
-                    relations: vec![relation],
+                    relations,
                     requires: Vec::new(),
                     attributes: Vec::new(),
                 }),

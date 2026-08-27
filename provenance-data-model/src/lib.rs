@@ -43,6 +43,25 @@ pub trait Model: Key {
     type Payload: Clone + Debug + PartialEq + Send + Sync + 'static;
 }
 
+/// Canonical primitive universe for integrations that share one provenance
+/// graph.
+///
+/// Adapters identify records with namespace, kind, and external ID. Existing
+/// adapters may retain a model marker when its identity domain is persisted;
+/// new integrations can use this model without a conversion boundary.
+#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct ProvenanceModel;
+
+impl Model for ProvenanceModel {
+    type Id = String;
+    type Seed = String;
+    type ExternalId = String;
+    type Payload = Vec<u8>;
+}
+
+/// Compatibility name for integrations that use the canonical plugin model.
+pub type PluginModel = ProvenanceModel;
+
 // =============================================================================
 // SMALL VALUE TYPES
 // =============================================================================

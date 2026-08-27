@@ -57,6 +57,14 @@ fn hello_request() -> bindings::ObservationRequest {
         attributes: Vec::new(),
     }
 }
+fn hello_request_with_mode(mode: &str) -> bindings::ObservationRequest {
+    let mut request = hello_request();
+    request.attributes.push(bindings::Attribute {
+        name: "test-mode".into(),
+        value: bindings::Value::StringValue(mode.into()),
+    });
+    request
+}
 
 fn hello_component() -> Vec<u8> {
     let target = TempDir::new().expect("hello target directory");
@@ -134,6 +142,38 @@ fn manager_registers_and_bridges_real_wasm_plugin() {
 }
 
 #[test]
+fn distinct_plugin_sources_remain_distinct() {
+    let component = hello_component();
+    let mut manager = PluginManager::new().expect("create manager");
+    manager
+        .register_component(&component)
+        .expect("register hello component");
+    let adapter = manager.adapter("hello-tracker").expect("create adapter");
+    let mut service = Service {
+        kernel: Kernel::new(TestIdentity),
+        adapter,
+        runtime: NoopRuntime::default(),
+        state: State::new(),
+    };
+
+    service
+        .process(hello_request())
+        .expect("process first hello transaction");
+    let mut second_request = hello_request();
+    second_request.source.id = "second".into();
+    service
+        .process(second_request)
+        .expect("process second hello transaction");
+
+    assert_eq!(service.state.operations.len(), 2);
+    assert_eq!(service.runtime.published, 2);
+    assert_eq!(
+        service.state.projection.source_to_operation.iter().count(),
+        2
+    );
+}
+
+#[test]
 fn manager_rejects_duplicate_plugin_id() {
     let component = hello_component();
     let mut manager = PluginManager::new().expect("create manager");
@@ -161,6 +201,81 @@ fn core_adapter_contract_is_used_for_wasm_output() {
     let transaction = adapter
         .transaction(hello_request())
         .expect("call hello adapter");
+    assert_eq!(
+        transaction.seed,
+        concat!(
+            "provenance-plugin/v2",
+            "\0",
+            "7:tracker",
+            "\0",
+            "13:hello-tracker",
+            "\0",
+            "36:hello-observation\0tracker\0poll\0hello",
+        )
+    );
     assert_eq!(transaction.source.unwrap().id.namespace.as_str(), "tracker");
     assert_eq!(transaction.intents.len(), 4);
+}
+
+#[test]
+fn host_rejects_empty_plugin_seed() {
+    let component = hello_component();
+    let mut manager = PluginManager::new().expect("create manager");
+    manager
+        .register_component(&component)
+        .expect("register hello component");
+    let adapter = manager.adapter("hello-tracker").expect("create adapter");
+
+    let error = adapter
+        .transaction(hello_request_with_mode("empty-seed"))
+        .expect_err("empty plugin seed must fail at host boundary");
+    assert!(matches!(
+        error,
+        provenance_plugin::PluginHostError::EmptyTransactionSeed { plugin }
+            if plugin == "hello-tracker"
+    ));
+}
+
+#[test]
+fn host_rejects_plugin_source_outside_namespace() {
+    let component = hello_component();
+    let mut manager = PluginManager::new().expect("create manager");
+    manager
+        .register_component(&component)
+        .expect("register hello component");
+    let adapter = manager.adapter("hello-tracker").expect("create adapter");
+
+    let error = adapter
+        .transaction(hello_request_with_mode("bad-source"))
+        .expect_err("foreign plugin source namespace must fail at host boundary");
+    assert!(matches!(
+        error,
+        provenance_plugin::PluginHostError::SourceNamespaceMismatch {
+            plugin,
+            actual,
+            expected,
+        } if plugin == "hello-tracker" && actual == "other" && expected == "tracker"
+    ));
+}
+
+#[test]
+fn host_rejects_plugin_parent_outside_namespace() {
+    let component = hello_component();
+    let mut manager = PluginManager::new().expect("create manager");
+    manager
+        .register_component(&component)
+        .expect("register hello component");
+    let adapter = manager.adapter("hello-tracker").expect("create adapter");
+
+    let error = adapter
+        .transaction(hello_request_with_mode("bad-parent"))
+        .expect_err("foreign plugin parent namespace must fail at host boundary");
+    assert!(matches!(
+        error,
+        provenance_plugin::PluginHostError::SourceNamespaceMismatch {
+            plugin,
+            actual,
+            expected,
+        } if plugin == "hello-tracker" && actual == "other" && expected == "tracker"
+    ));
 }

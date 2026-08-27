@@ -7,17 +7,22 @@ edition = "2024"
 name = "provenance_jj"
 path = "src/lib.rs"
 
+[features]
+default = []
+plugins = ["dep:provenance-plugin"]
+
 [dependencies]
 provenance-core = { workspace = true }
+provenance-plugin = { workspace = true, optional = true }
 jj-lib = { workspace = true }
 gix = { workspace = true }
 pollster = { workspace = true }
 serde = { workspace = true }
 postcard = { workspace = true }
 fs2 = { workspace = true }
-sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+wit-component = { workspace = true }
 tempfile = { workspace = true }

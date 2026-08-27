@@ -11,8 +11,7 @@ use provenance_core::{
 };
 use provenance_data_model::{NodeRef, NodeType};
 
-use super::bindings;
-use super::model::PluginModel;
+use super::{PluginModel, bindings};
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum ConversionError {
