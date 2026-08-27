@@ -5,6 +5,7 @@ members = [
     "provenance-jj",
     "provenance-plugin",
     "provenance-plugin/examples/hello",
+    "provenance-storage",
 ]
 resolver = "3"
 
@@ -16,6 +17,7 @@ pollster = "0.4"
 postcard = { version = "1.1", features = ["alloc"] }
 provenance-core = { path = "provenance-core" }
 provenance-data-model = { path = "provenance-data-model" }
+provenance-storage = { path = "provenance-storage" }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 tempfile = "3"

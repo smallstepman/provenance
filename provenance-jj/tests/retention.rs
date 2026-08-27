@@ -4,7 +4,8 @@ use provenance_core::{
     Attributes, EventIntent, Intent, Operation, OperationId, ProvenanceStore, Resource,
     ResourceRequirement, RetentionStrength, Runtime, Transaction,
 };
-use provenance_jj::{DirectoryProvenanceStore, JjRuntime, JjRuntimeError, jj_commit, open_service};
+use provenance_jj::{JjRuntime, JjRuntimeError, jj_commit, open_service};
+use provenance_storage::DirectoryProvenanceStore;
 use std::collections::BTreeSet;
 use std::thread;
 
@@ -203,10 +204,7 @@ fn concurrent_store_publish_of_same_operation_is_idempotent() {
         runtime.published_len().expect("published operation count"),
         1
     );
-    assert_eq!(
-        runtime.store().heads().expect("authoritative heads").len(),
-        1
-    );
+    assert_eq!(runtime.heads().expect("authoritative heads").len(), 1);
 }
 
 #[test]
@@ -231,7 +229,8 @@ fn crash_before_head_publication_does_not_make_orphan_authoritative() {
         .expect("persist immutable operation");
     drop(store);
 
-    let mut reopened = DirectoryProvenanceStore::open(&store_path).expect("reopen authority");
+    let mut reopened = DirectoryProvenanceStore::<provenance_jj::JjModel>::open(&store_path)
+        .expect("reopen authority");
     assert!(reopened.heads().expect("read heads").is_empty());
     assert!(
         reopened
@@ -271,14 +270,14 @@ fn concurrent_divergent_operations_preserve_both_heads() {
         .find(|(_, operation)| operation.parents.is_empty())
         .map(|(_, operation)| operation.clone())
         .expect("root operation");
-    let operation_a = Operation {
+    let operation_a: Operation<provenance_jj::JjModel> = Operation {
         id: OperationId::<provenance_jj::JjModel>::new("branch-a".to_owned()),
         parents: BTreeSet::from([root.id.clone()]),
         source: None,
         facts: Vec::new(),
         attributes: Attributes::new(),
     };
-    let operation_b = Operation {
+    let operation_b: Operation<provenance_jj::JjModel> = Operation {
         id: OperationId::<provenance_jj::JjModel>::new("branch-b".to_owned()),
         parents: BTreeSet::from([root.id.clone()]),
         source: None,
@@ -286,7 +285,8 @@ fn concurrent_divergent_operations_preserve_both_heads() {
         attributes: Attributes::new(),
     };
     let store_path = fixture.dir.path().join(".jj").join("divergent");
-    let mut store = DirectoryProvenanceStore::open(&store_path).expect("open authority");
+    let mut store = DirectoryProvenanceStore::<provenance_jj::JjModel>::open(&store_path)
+        .expect("open authority");
     store.put_operation(&root).expect("persist root");
     store
         .publish_heads(&BTreeSet::new(), &BTreeSet::from([root.id.clone()]))
@@ -299,7 +299,8 @@ fn concurrent_divergent_operations_preserve_both_heads() {
             let store_path = store_path.clone();
             thread::spawn(move || {
                 let mut store =
-                    DirectoryProvenanceStore::open(store_path).expect("open branch authority");
+                    DirectoryProvenanceStore::<provenance_jj::JjModel>::open(store_path)
+                        .expect("open branch authority");
                 store.put_operation(&operation).expect("persist branch");
                 let expected = store.heads().expect("read branch heads");
                 let mut next = expected.clone();
@@ -317,7 +318,8 @@ fn concurrent_divergent_operations_preserve_both_heads() {
         handle.join().expect("branch publisher");
     }
 
-    let store = DirectoryProvenanceStore::open(&store_path).expect("reopen divergent authority");
+    let store = DirectoryProvenanceStore::<provenance_jj::JjModel>::open(&store_path)
+        .expect("reopen divergent authority");
     assert_eq!(
         store.heads().expect("divergent heads"),
         BTreeSet::from([operation_a.id, operation_b.id])

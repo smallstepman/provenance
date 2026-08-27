@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -6,9 +6,9 @@ use jj_lib::repo::ReadonlyRepo;
 use provenance_core::{
     FinalizeAction, Operation, OperationId, PrepareRequirement, ProvenanceStore, Runtime, State,
 };
+use provenance_storage::{DirectoryProvenanceStore, MemoryProvenanceStore, StorageError};
 use thiserror::Error;
 
-use crate::authoritative::{DirectoryProvenanceStore, DirectoryStoreError};
 use crate::model::JjModel;
 use crate::retention::{JjRetention, JjRetentionError};
 
@@ -17,13 +17,101 @@ pub enum JjRuntimeError {
     #[error(transparent)]
     Retention(#[from] JjRetentionError),
     #[error(transparent)]
-    Store(#[from] DirectoryStoreError),
+    Store(#[from] StorageError),
     #[error(transparent)]
     Core(#[from] provenance_core::Error),
     #[error("provenance object materialization is not configured for provenance-jj")]
     ObjectMaterializationUnsupported,
     #[error("published provenance operation identity collision")]
     PublishCollision,
+}
+
+enum JjStore {
+    Memory(MemoryProvenanceStore<JjModel>),
+    Directory(DirectoryProvenanceStore<JjModel>),
+}
+
+impl JjStore {
+    fn is_durable(&self) -> bool {
+        matches!(self, Self::Directory(_))
+    }
+
+    fn reachable_operations(&self) -> Result<Vec<Operation<JjModel>>, StorageError> {
+        match self {
+            Self::Memory(store) => store.reachable_operations(),
+            Self::Directory(store) => store.reachable_operations(),
+        }
+    }
+
+    fn reachable_operation_count(&self) -> Result<usize, StorageError> {
+        match self {
+            Self::Memory(store) => store.reachable_operation_count(),
+            Self::Directory(store) => store.reachable_operation_count(),
+        }
+    }
+}
+
+impl ProvenanceStore<JjModel> for JjStore {
+    type Error = StorageError;
+
+    fn get_operation(
+        &self,
+        id: &OperationId<JjModel>,
+    ) -> Result<Option<Operation<JjModel>>, Self::Error> {
+        match self {
+            Self::Memory(store) => store.get_operation(id),
+            Self::Directory(store) => store.get_operation(id),
+        }
+    }
+
+    fn has_operation(&self, id: &OperationId<JjModel>) -> Result<bool, Self::Error> {
+        match self {
+            Self::Memory(store) => store.has_operation(id),
+            Self::Directory(store) => store.has_operation(id),
+        }
+    }
+
+    fn put_operation(&mut self, operation: &Operation<JjModel>) -> Result<(), Self::Error> {
+        match self {
+            Self::Memory(store) => store.put_operation(operation),
+            Self::Directory(store) => store.put_operation(operation),
+        }
+    }
+
+    fn get_object(
+        &self,
+        id: &provenance_core::ObjectId<JjModel>,
+    ) -> Result<Option<provenance_core::Object<JjModel>>, Self::Error> {
+        match self {
+            Self::Memory(store) => store.get_object(id),
+            Self::Directory(store) => store.get_object(id),
+        }
+    }
+
+    fn put_object(&mut self, object: &provenance_core::Object<JjModel>) -> Result<(), Self::Error> {
+        match self {
+            Self::Memory(store) => store.put_object(object),
+            Self::Directory(store) => store.put_object(object),
+        }
+    }
+
+    fn heads(&self) -> Result<BTreeSet<OperationId<JjModel>>, Self::Error> {
+        match self {
+            Self::Memory(store) => store.heads(),
+            Self::Directory(store) => store.heads(),
+        }
+    }
+
+    fn publish_heads(
+        &mut self,
+        expected: &BTreeSet<OperationId<JjModel>>,
+        next: &BTreeSet<OperationId<JjModel>>,
+    ) -> Result<provenance_core::PublishOutcome, Self::Error> {
+        match self {
+            Self::Memory(store) => store.publish_heads(expected, next),
+            Self::Directory(store) => store.publish_heads(expected, next),
+        }
+    }
 }
 
 /// Runtime boundary for JJ-backed retention and authoritative operation storage.
@@ -33,7 +121,7 @@ pub enum JjRuntimeError {
 pub struct JjRuntime {
     retention: JjRetention,
     published: BTreeMap<OperationId<JjModel>, Operation<JjModel>>,
-    store: DirectoryProvenanceStore,
+    store: JjStore,
 }
 
 impl std::fmt::Debug for JjRuntime {
@@ -41,7 +129,7 @@ impl std::fmt::Debug for JjRuntime {
         formatter
             .debug_struct("JjRuntime")
             .field("published_operations", &self.published.len())
-            .field("durable", &self.store.root().is_some())
+            .field("durable", &self.store.is_durable())
             .finish()
     }
 }
@@ -51,7 +139,7 @@ impl JjRuntime {
         Self {
             retention: JjRetention::new(repo),
             published: BTreeMap::new(),
-            store: DirectoryProvenanceStore::in_memory(),
+            store: JjStore::Memory(MemoryProvenanceStore::new()),
         }
     }
 
@@ -60,7 +148,7 @@ impl JjRuntime {
         let mut runtime = Self {
             retention: JjRetention::new(repo),
             published: BTreeMap::new(),
-            store: DirectoryProvenanceStore::open(path)?,
+            store: JjStore::Directory(DirectoryProvenanceStore::open(path)?),
         };
         runtime.reload_cache()?;
         runtime.reconcile()?;
@@ -71,8 +159,8 @@ impl JjRuntime {
         &self.retention
     }
 
-    pub fn store(&self) -> &DirectoryProvenanceStore {
-        &self.store
+    pub fn heads(&self) -> Result<BTreeSet<OperationId<JjModel>>, JjRuntimeError> {
+        Ok(self.store.heads()?)
     }
 
     pub fn load_state(&self) -> Result<State<JjModel>, JjRuntimeError> {

@@ -2168,12 +2168,11 @@ dependencies = [
 name = "provenance-jj"
 version = "0.1.0"
 dependencies = [
- "fs2",
  "gix",
  "jj-lib",
  "pollster 0.4.0",
- "postcard",
  "provenance-core",
+ "provenance-storage",
  "serde",
  "sha2 0.10.9",
  "tempfile",
@@ -2201,6 +2200,18 @@ name = "provenance-plugin-hello"
 version = "0.1.0"
 dependencies = [
  "wit-bindgen",
+]
+
+[[package]]
+name = "provenance-storage"
+version = "0.1.0"
+dependencies = [
+ "fs2",
+ "postcard",
+ "provenance-core",
+ "serde",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

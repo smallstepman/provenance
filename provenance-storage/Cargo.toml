@@ -1,22 +1,18 @@
 [package]
-name = "provenance-jj"
+name = "provenance-storage"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "provenance_jj"
+name = "provenance_storage"
 path = "src/lib.rs"
 
 [dependencies]
+fs2 = { workspace = true }
+postcard = { workspace = true }
 provenance-core = { workspace = true }
-provenance-storage = { workspace = true }
-jj-lib = { workspace = true }
-gix = { workspace = true }
-pollster = { workspace = true }
 serde = { workspace = true }
-sha2 = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -1,9 +1,8 @@
 use postcard::Error;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use thiserror::Error;
+use serde::{Serialize, de::DeserializeOwned};
+use thiserror::Error as ThisError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, ThisError)]
 pub enum CodecError {
     #[error("could not encode provenance record: {0}")]
     Encode(#[source] Error),

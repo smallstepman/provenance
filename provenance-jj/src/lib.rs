@@ -5,8 +5,6 @@ use provenance_core::{DefaultRules, Kernel, Service};
 use thiserror::Error;
 
 mod adapter;
-mod authoritative;
-mod codec;
 mod identity;
 mod ingest;
 mod model;
@@ -19,7 +17,6 @@ pub use adapter::{
     JjAdapter, JjAdapterError, JjRepository, JjRepositoryError, JjRepositorySource,
     observe_repository,
 };
-pub use authoritative::{DirectoryProvenanceStore, DirectoryStoreError};
 pub use identity::{JjIdentity, observation_seed};
 pub use ingest::{JjIngestError, ingest_repository};
 pub use model::{
