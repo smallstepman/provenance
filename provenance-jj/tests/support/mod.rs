@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use jj_lib::backend::CommitId;
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::object_id::ObjectId;
 use jj_lib::repo::Repo;
@@ -33,6 +34,35 @@ impl Fixture {
 
     pub fn commit(&self, message: &str) {
         run_jj(self.dir.path(), ["commit", "-m", message]);
+    }
+    pub fn root_operation_id(&self) -> String {
+        self.repository()
+            .operation_ancestry()
+            .expect("JJ operation ancestry")
+            .into_iter()
+            .find(|operation| {
+                operation
+                    .id()
+                    .hex()
+                    .chars()
+                    .any(|character| character != '0')
+            })
+            .expect("non-root JJ operation")
+            .id()
+            .hex()
+    }
+
+    pub fn restore_operation(&self, operation_id: &str) {
+        run_jj(self.dir.path(), ["operation", "restore", operation_id]);
+    }
+
+    pub fn abandon_operations_since(&self, operation_id: &str) {
+        let range = format!("{operation_id}..@-");
+        run_jj(self.dir.path(), ["operation", "abandon", range.as_str()]);
+    }
+
+    pub fn gc(&self) {
+        run_jj(self.dir.path(), ["util", "gc", "--expire", "now"]);
     }
 
     pub fn repository(&self) -> JjRepository {
@@ -84,6 +114,22 @@ impl Fixture {
                 .expect("non-root commit");
         }
     }
+    pub fn commit_exists(&self, commit_id: &str) -> bool {
+        let commit_id = CommitId::try_from_hex(commit_id.as_bytes()).expect("valid JJ commit id");
+        self.repository()
+            .repo()
+            .store()
+            .get_commit(&commit_id)
+            .is_ok()
+    }
+
+    pub fn git_prune(&self) {
+        run_git(
+            self.dir.path(),
+            ["reflog", "expire", "--expire=now", "--all"],
+        );
+        run_git(self.dir.path(), ["gc", "--prune=now", "--aggressive"]);
+    }
 }
 
 fn init_jj(directory: &Path) {
@@ -122,4 +168,13 @@ pub fn run_jj<const N: usize>(directory: &Path, args: [&str; N]) {
         .status()
         .expect("run jj");
     assert!(status.success(), "jj command failed: {args:?}");
+}
+fn run_git<const N: usize>(directory: &Path, args: [&str; N]) {
+    let status = Command::new("git")
+        .arg("--git-dir")
+        .arg(directory.join(".jj").join("repo").join("store").join("git"))
+        .args(args)
+        .status()
+        .expect("run git");
+    assert!(status.success(), "git command failed: {args:?}");
 }

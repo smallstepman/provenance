@@ -356,3 +356,116 @@ fn pinned_historical_commit_survives_jj_rewrite() {
         .verify_pinned(&resource)
         .expect("historical commit pin resolves");
 }
+
+#[test]
+fn pinned_commit_survives_jj_gc_and_aggressive_git_pruning() {
+    let fixture = support::Fixture::new();
+    let root_operation = fixture.root_operation_id();
+
+    fixture.write_file("README", "retained\n");
+    fixture.commit("retained");
+    let retained_commit = fixture.head_commit();
+    let mut service = fixture.service();
+    fixture.ingest(&mut service);
+    commit_plan(
+        &mut service,
+        retention_transaction(&retained_commit, RetentionStrength::Pinned),
+    )
+    .expect("pin historical commit");
+    let retained_resource = Resource::from(jj_commit(retained_commit.clone()));
+
+    fixture.write_file("README", "unretained one\n");
+    fixture.squash();
+    let first_unretained_commit = fixture.head_commit();
+    fixture.write_file("README", "unretained two\n");
+    fixture.squash();
+    let second_unretained_commit = fixture.head_commit();
+    assert_ne!(retained_commit, first_unretained_commit);
+    assert_ne!(first_unretained_commit, second_unretained_commit);
+
+    // Restore the initial view and discard every operation that could retain
+    // either rewritten commit before running the real JJ garbage collector.
+    drop(service);
+    fixture.restore_operation(&root_operation);
+    fixture.abandon_operations_since(&root_operation);
+    fixture.gc();
+    fixture.git_prune();
+
+    assert!(
+        fixture.commit_exists(&retained_commit),
+        "pinned commit was collected"
+    );
+    assert!(
+        !fixture.commit_exists(&first_unretained_commit),
+        "first rewritten commit remained reachable"
+    );
+    assert!(
+        !fixture.commit_exists(&second_unretained_commit),
+        "second rewritten commit remained reachable"
+    );
+
+    let recovered = fixture.service();
+    recovered
+        .runtime
+        .retention()
+        .verify_pinned(&retained_resource)
+        .expect("packed provenance ref still resolves to retained commit");
+}
+
+#[test]
+fn released_commit_is_collectable_after_jj_gc_and_aggressive_git_pruning() {
+    let fixture = support::Fixture::new();
+    let root_operation = fixture.root_operation_id();
+
+    fixture.write_file("README", "released\n");
+    fixture.commit("released");
+    let released_commit = fixture.head_commit();
+    let mut service = fixture.service();
+    fixture.ingest(&mut service);
+    commit_plan(
+        &mut service,
+        retention_transaction(&released_commit, RetentionStrength::Pinned),
+    )
+    .expect("pin commit before release");
+    let released_resource = Resource::from(jj_commit(released_commit.clone()));
+    // Exercise deletion after Git has packed the provenance ref.
+    fixture.git_prune();
+    let claim = service
+        .state
+        .projection
+        .active_retention
+        .iter()
+        .next()
+        .map(|(claim, _)| claim.clone())
+        .expect("pinned claim");
+
+    commit_plan(&mut service, release_transaction(claim)).expect("release commit pin");
+    assert!(
+        service
+            .runtime
+            .retention()
+            .verify_pinned(&released_resource)
+            .is_err(),
+        "released commit still has a provenance ref"
+    );
+
+    fixture.write_file("README", "replacement\n");
+    fixture.squash();
+    let replacement_commit = fixture.head_commit();
+    assert_ne!(released_commit, replacement_commit);
+
+    drop(service);
+    fixture.restore_operation(&root_operation);
+    fixture.abandon_operations_since(&root_operation);
+    fixture.gc();
+    fixture.git_prune();
+
+    assert!(
+        !fixture.commit_exists(&released_commit),
+        "released commit remained reachable after pruning"
+    );
+    assert!(
+        !fixture.commit_exists(&replacement_commit),
+        "replacement commit remained reachable after pruning"
+    );
+}
