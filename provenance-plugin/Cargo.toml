@@ -10,13 +10,13 @@ default = []
 guest = ["dep:wit-bindgen"]
 
 [dependencies]
-provenance-core = { path = "../provenance-core" }
-provenance-data-model = { path = "../provenance-data-model" }
-wasmtime = { version = "48", default-features = false, features = ["component-model", "cranelift", "runtime", "wat"] }
-serde = { version = "1", features = ["derive"] }
-wit-bindgen = { version = "0.61", optional = true }
-thiserror = "2"
-tracing = "0.1"
+provenance-core = { workspace = true }
+provenance-data-model = { workspace = true }
+wasmtime = { workspace = true }
+serde = { workspace = true }
+wit-bindgen = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 [dev-dependencies]
-tempfile = "3"
-wit-component = "0.254"
+tempfile = { workspace = true }
+wit-component = { workspace = true }

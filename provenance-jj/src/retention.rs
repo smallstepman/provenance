@@ -49,11 +49,11 @@ impl std::fmt::Debug for JjRetention {
 }
 
 impl JjRetention {
-    pub fn new(repo: Arc<ReadonlyRepo>) -> Self {
+    pub(crate) fn new(repo: Arc<ReadonlyRepo>) -> Self {
         Self { repo }
     }
 
-    pub fn keep_ref_name(commit_id: &str) -> String {
+    fn keep_ref_name(commit_id: &str) -> String {
         format!("{KEEP_REF_PREFIX}{commit_id}")
     }
 

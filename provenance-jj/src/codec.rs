@@ -11,10 +11,10 @@ pub enum CodecError {
     Decode(#[source] Error),
 }
 
-pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, CodecError> {
+pub(crate) fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, CodecError> {
     postcard::to_allocvec(value).map_err(CodecError::Encode)
 }
 
-pub fn decode<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecError> {
+pub(crate) fn decode<T: DeserializeOwned>(payload: &[u8]) -> Result<T, CodecError> {
     postcard::from_bytes(payload).map_err(CodecError::Decode)
 }

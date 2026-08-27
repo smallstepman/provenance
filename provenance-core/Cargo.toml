@@ -8,7 +8,7 @@ name = "provenance_core"
 path = "src/lib.rs"
 
 [dependencies]
-provenance-data-model = { path = "../provenance-data-model" }
-serde = { version = "1", features = ["derive"] }
-thiserror = "2"
-tracing = "0.1"
+provenance-data-model = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

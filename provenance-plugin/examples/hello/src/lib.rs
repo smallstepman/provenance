@@ -8,8 +8,8 @@ wit_bindgen::generate!({
     world: "plugin",
 });
 
-mod guest {
-    pub use super::*;
+pub(crate) mod guest {
+    pub(crate) use super::*;
 }
 struct HelloPlugin;
 

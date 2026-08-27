@@ -57,7 +57,7 @@ impl std::fmt::Debug for JjRepository {
 
 impl JjRepository {
     /// Wraps an already-loaded JJ repository snapshot.
-    pub fn from_repo(repo: Arc<ReadonlyRepo>) -> Self {
+    fn from_repo(repo: Arc<ReadonlyRepo>) -> Self {
         Self {
             repo,
             workspace_root: None,

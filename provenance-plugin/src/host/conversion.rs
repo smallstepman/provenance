@@ -28,7 +28,7 @@ pub enum ConversionError {
     InvalidQueryDepth(u64),
 }
 
-pub fn transaction(
+pub(crate) fn transaction(
     transaction: bindings::Transaction,
 ) -> Result<Transaction<PluginModel>, ConversionError> {
     Ok(Transaction {
@@ -43,7 +43,7 @@ pub fn transaction(
     })
 }
 
-pub fn source_operation(
+pub(crate) fn source_operation(
     source: bindings::SourceOperation,
 ) -> Result<SourceOperation<PluginModel>, ConversionError> {
     Ok(SourceOperation {
@@ -52,7 +52,7 @@ pub fn source_operation(
     })
 }
 
-pub fn address(address: bindings::EntityAddress) -> EntityAddress<PluginModel> {
+pub(crate) fn address(address: bindings::EntityAddress) -> EntityAddress<PluginModel> {
     EntityAddress::new(address.namespace, address.kind, address.id)
 }
 
@@ -419,12 +419,12 @@ fn resource_requirement(
 
 fn event_intent(event: bindings::EventIntent) -> Result<EventIntent<PluginModel>, ConversionError> {
     Ok(EventIntent {
-        session: event.session.map(|id| SessionId::<PluginModel>::new(id)),
-        actor: event.actor.map(|id| ActorId::<PluginModel>::new(id)),
+        session: event.session.map(SessionId::<PluginModel>::new),
+        actor: event.actor.map(ActorId::<PluginModel>::new),
         additional_parents: event
             .additional_parents
             .into_iter()
-            .map(|id| EventId::<PluginModel>::new(id))
+            .map(EventId::<PluginModel>::new)
             .collect(),
         subjects: event.subjects.into_iter().map(entity_ref).collect(),
         relations: event
@@ -514,7 +514,7 @@ fn availability(availability: bindings::Availability) -> Availability<PluginMode
         bindings::Availability::Remote(replicas) => Availability::Remote(
             replicas
                 .into_iter()
-                .map(|id| ReplicaId::<PluginModel>::new(id))
+                .map(ReplicaId::<PluginModel>::new)
                 .collect(),
         ),
         bindings::Availability::Missing => Availability::Missing,
@@ -540,7 +540,7 @@ fn intent(value: bindings::Intent) -> Result<Intent<PluginModel>, ConversionErro
         }
         bindings::Intent::OpenSession(session) => Intent::OpenSession {
             seed: session.seed,
-            parent: session.parent.map(|id| SessionId::<PluginModel>::new(id)),
+            parent: session.parent.map(SessionId::<PluginModel>::new),
             attributes: attributes(session.attributes)?,
         },
         bindings::Intent::EndSession(id) => Intent::EndSession {
@@ -548,7 +548,7 @@ fn intent(value: bindings::Intent) -> Result<Intent<PluginModel>, ConversionErro
         },
         bindings::Intent::DeclareActor(actor) => Intent::DeclareActor {
             seed: actor.seed,
-            session: actor.session.map(|id| SessionId::<PluginModel>::new(id)),
+            session: actor.session.map(SessionId::<PluginModel>::new),
             attributes: attributes(actor.attributes)?,
         },
         bindings::Intent::PutObject(object) => Intent::PutObject {

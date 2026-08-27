@@ -27,7 +27,6 @@ pub enum JjRuntimeError {
 }
 
 /// Runtime boundary for JJ-backed retention and authoritative operation storage.
-
 /// The durable backend stores immutable operation/object records and an
 /// atomically replaced head manifest. Retention is reconciled from the
 /// authoritative kernel projection after restart.

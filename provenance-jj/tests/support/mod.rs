@@ -2,40 +2,41 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use gix::hash::Kind;
 use jj_lib::backend::CommitId;
 use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
 use jj_lib::object_id::ObjectId;
 use jj_lib::repo::Repo;
 use jj_lib::settings::UserSettings;
+use jj_lib::workspace::Workspace;
 use provenance_core::{DefaultRules, Kernel, Service, State};
 use provenance_jj::{JjAdapter, JjIdentity, JjModel, JjRepository, JjRuntime, ingest_repository};
 use tempfile::TempDir;
 
-pub type JjService = Service<JjModel, JjIdentity, DefaultRules, JjAdapter, JjRuntime>;
+pub(crate) type JjService = Service<JjModel, JjIdentity, DefaultRules, JjAdapter, JjRuntime>;
 
-pub struct Fixture {
-    pub dir: TempDir,
-    pub settings: UserSettings,
+pub(crate) struct Fixture {
+    pub(crate) dir: TempDir,
+    settings: UserSettings,
 }
 
 impl Fixture {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let dir = tempfile::tempdir().expect("temporary repository");
-        init_jj(dir.path());
-        Self {
-            dir,
-            settings: test_settings(),
-        }
+        let settings = test_settings();
+        init_jj(dir.path(), &settings);
+        Self { dir, settings }
     }
 
-    pub fn write_file(&self, name: &str, contents: &str) {
+    pub(crate) fn write_file(&self, name: &str, contents: &str) {
         fs::write(self.dir.path().join(name), contents).expect("write fixture file");
     }
 
-    pub fn commit(&self, message: &str) {
+    pub(crate) fn commit(&self, message: &str) {
         run_jj(self.dir.path(), ["commit", "-m", message]);
     }
-    pub fn root_operation_id(&self) -> String {
+    #[allow(dead_code)]
+    pub(crate) fn root_operation_id(&self) -> String {
         self.repository()
             .operation_ancestry()
             .expect("JJ operation ancestry")
@@ -52,28 +53,31 @@ impl Fixture {
             .hex()
     }
 
-    pub fn restore_operation(&self, operation_id: &str) {
+    #[allow(dead_code)]
+    pub(crate) fn restore_operation(&self, operation_id: &str) {
         run_jj(self.dir.path(), ["operation", "restore", operation_id]);
     }
 
-    pub fn abandon_operations_since(&self, operation_id: &str) {
+    #[allow(dead_code)]
+    pub(crate) fn abandon_operations_since(&self, operation_id: &str) {
         let range = format!("{operation_id}..@-");
         run_jj(self.dir.path(), ["operation", "abandon", range.as_str()]);
     }
 
-    pub fn gc(&self) {
+    #[allow(dead_code)]
+    pub(crate) fn gc(&self) {
         run_jj(self.dir.path(), ["util", "gc", "--expire", "now"]);
     }
 
-    pub fn repository(&self) -> JjRepository {
+    pub(crate) fn repository(&self) -> JjRepository {
         JjRepository::load(&self.settings, self.dir.path()).expect("load JJ repository")
     }
     #[allow(dead_code)]
-    pub fn squash(&self) {
+    pub(crate) fn squash(&self) {
         run_jj(self.dir.path(), ["squash"]);
     }
 
-    pub fn service(&self) -> JjService {
+    pub(crate) fn service(&self) -> JjService {
         let repository = self.repository();
         Service {
             kernel: Kernel::new(JjIdentity),
@@ -82,11 +86,11 @@ impl Fixture {
             state: State::new(),
         }
     }
-    pub fn ingest(&self, service: &mut JjService) {
+    pub(crate) fn ingest(&self, service: &mut JjService) {
         ingest_repository(service, &self.repository()).expect("ingest JJ ancestry");
     }
 
-    pub fn head_commit(&self) -> String {
+    pub(crate) fn head_commit(&self) -> String {
         let repository = self.repository();
         let mut commit_id = repository
             .repo()
@@ -114,7 +118,8 @@ impl Fixture {
                 .expect("non-root commit");
         }
     }
-    pub fn commit_exists(&self, commit_id: &str) -> bool {
+    #[allow(dead_code)]
+    pub(crate) fn commit_exists(&self, commit_id: &str) -> bool {
         let commit_id = CommitId::try_from_hex(commit_id.as_bytes()).expect("valid JJ commit id");
         self.repository()
             .repo()
@@ -123,7 +128,8 @@ impl Fixture {
             .is_ok()
     }
 
-    pub fn git_prune(&self) {
+    #[allow(dead_code)]
+    pub(crate) fn git_prune(&self) {
         run_git(
             self.dir.path(),
             ["reflog", "expire", "--expire=now", "--all"],
@@ -132,18 +138,16 @@ impl Fixture {
     }
 }
 
-fn init_jj(directory: &Path) {
-    let status = Command::new("jj")
-        .args(["--config", "user.name=Provenance Test"])
-        .args(["--config", "user.email=provenance@example.invalid"])
-        .args(["git", "init", "--no-colocate"])
-        .arg(directory)
-        .status()
-        .expect("initialize jj");
-    assert!(status.success(), "jj init failed");
+fn init_jj(directory: &Path, settings: &UserSettings) {
+    pollster::block_on(Workspace::init_internal_git(
+        settings,
+        directory,
+        Kind::Sha1,
+    ))
+    .expect("initialize jj");
 }
 
-pub fn test_settings() -> UserSettings {
+fn test_settings() -> UserSettings {
     let mut config = StackedConfig::with_defaults();
     let layer = ConfigLayer::parse(
         ConfigSource::CommandArg,
@@ -158,7 +162,7 @@ email = "provenance@example.invalid"
     UserSettings::from_config(config).expect("JJ user settings")
 }
 
-pub fn run_jj<const N: usize>(directory: &Path, args: [&str; N]) {
+fn run_jj<const N: usize>(directory: &Path, args: [&str; N]) {
     let status = Command::new("jj")
         .args(["--config", "user.name=Provenance Test"])
         .args(["--config", "user.email=provenance@example.invalid"])
@@ -169,6 +173,7 @@ pub fn run_jj<const N: usize>(directory: &Path, args: [&str; N]) {
         .expect("run jj");
     assert!(status.success(), "jj command failed: {args:?}");
 }
+#[allow(dead_code)]
 fn run_git<const N: usize>(directory: &Path, args: [&str; N]) {
     let status = Command::new("git")
         .arg("--git-dir")

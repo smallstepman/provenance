@@ -47,7 +47,6 @@ enum Backend {
 }
 
 /// Immutable operation/object storage with atomically published head pointers.
-
 /// The in-memory backend is used by unit/integration tests. The filesystem
 /// backend is the durable authority used by the CLI.
 #[derive(Debug)]
