@@ -15,6 +15,7 @@ pub const WIT_SOURCE: &str = include_str!("../../wit/provenance-plugin.wit");
 ///
 #[cfg(feature = "guest")]
 pub mod guest {
+    #![allow(clippy::too_many_arguments)] // Generated bindings expose the WIT ABI records directly.
     wit_bindgen::generate!({
         path: "wit",
         world: "plugin",

@@ -1,16 +1,7 @@
-use provenance_core::{EntityAddress, EntityRef, Value};
-use serde::{Deserialize, Serialize};
+use provenance_core::{EntityAddress, EntityRef, PluginModel, Value};
 
-/// Primitive universe used by the Jujutsu provenance adapter.
-#[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct JjModel;
-
-impl provenance_core::Model for JjModel {
-    type Id = String;
-    type Seed = String;
-    type ExternalId = String;
-    type Payload = Vec<u8>;
-}
+/// JJ uses the canonical shared provenance graph model.
+pub type JjModel = PluginModel;
 
 pub const JJ_NAMESPACE: &str = "jj";
 pub const OPERATION_KIND: &str = "operation";

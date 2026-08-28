@@ -8,6 +8,8 @@ mod adapter;
 mod identity;
 mod ingest;
 mod model;
+#[cfg(feature = "plugins")]
+mod plugins;
 mod query;
 mod retention;
 mod runtime;
@@ -23,6 +25,8 @@ pub use model::{
     CHANGE_KIND, COMMIT_KIND, JJ_NAMESPACE, JjModel, OPERATION_KIND, WORKSPACE_KIND, external,
     jj_address, jj_change, jj_commit_address, jj_operation, jj_workspace, string_value,
 };
+#[cfg(feature = "plugins")]
+pub use plugins::{JjPluginError, ingest_plugin, ingest_plugin_with_causal_parents};
 pub use query::{JjQueryError, compile_why, jj_commit, jj_entity, why_jj_commit};
 pub use retention::{JjRetention, JjRetentionError, KEEP_REF_PREFIX, keep_ref_name};
 pub use runtime::{JjRuntime, JjRuntimeError};

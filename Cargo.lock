@@ -2153,6 +2153,7 @@ version = "0.1.0"
 dependencies = [
  "provenance-data-model",
  "serde",
+ "sha2 0.10.9",
  "thiserror",
  "tracing",
 ]
@@ -2168,16 +2169,20 @@ dependencies = [
 name = "provenance-jj"
 version = "0.1.0"
 dependencies = [
+ "fs2",
  "gix",
  "jj-lib",
  "pollster 0.4.0",
+ "postcard",
  "provenance-core",
+ "provenance-plugin",
  "provenance-storage",
  "serde",
  "sha2 0.10.9",
  "tempfile",
  "thiserror",
  "tracing",
+ "wit-component 0.254.0",
 ]
 
 [[package]]
@@ -2186,11 +2191,22 @@ version = "0.1.0"
 dependencies = [
  "provenance-core",
  "provenance-data-model",
- "serde",
  "tempfile",
  "thiserror",
  "tracing",
  "wasmtime",
+ "wit-bindgen",
+ "wit-component 0.254.0",
+]
+
+[[package]]
+name = "provenance-plugin-beads"
+version = "0.1.0"
+dependencies = [
+ "provenance-core",
+ "provenance-plugin",
+ "serde_json",
+ "tempfile",
  "wit-bindgen",
  "wit-component 0.254.0",
 ]

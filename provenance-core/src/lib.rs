@@ -96,9 +96,10 @@ pub use provenance_data_model::{
     EntitySchema, EntityType, EntityTypePattern, EventId, EventTag, ExplanationDirection,
     ExplanationRole, ExplanationSemantics, FieldName, FieldSchema, Id, IdentityKind,
     IdentityScheme, InternalEntityKind, InternalEntityRef, Key, Model, Namespace, Object, ObjectId,
-    ObjectTag, OperationId, OperationTag, QueryName, Relation, RelationName, RelationSchema,
-    RelationType, Replica, ReplicaId, ReplicaTag, SchemaDefinition, SchemaKey, SchemaVersion,
-    Session, SessionId, SessionTag, SourceAnchor, SourceOperation, Value, ValueType,
+    ObjectTag, OperationId, OperationTag, PluginModel, ProvenanceModel, QueryName, Relation,
+    RelationName, RelationSchema, RelationType, Replica, ReplicaId, ReplicaTag, SchemaDefinition,
+    SchemaKey, SchemaVersion, Session, SessionId, SessionTag, SourceAnchor, SourceOperation, Value,
+    ValueType,
 };
 
 use serde::{Deserialize, Serialize};
@@ -165,14 +166,16 @@ pub enum Error {
     PolicyRejected,
 }
 
-pub type Result<T> = std::result::Result<T, Error>; // =============================================================================
+pub type Result<T> = std::result::Result<T, Error>;
 
+mod identity;
 mod integration;
 mod protocol;
 mod query;
 mod retention;
 mod state;
 
+pub use identity::ProvenanceIdentity;
 pub use integration::*;
 pub use protocol::*;
 pub use query::*;

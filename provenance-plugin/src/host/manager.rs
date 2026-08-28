@@ -61,6 +61,16 @@ pub enum PluginHostError {
     Conversion(#[from] conversion::ConversionError),
     #[error("provenance core rejected plugin transaction: {0}")]
     Core(#[source] CoreError),
+    #[error("plugin `{plugin}` returned an empty transaction seed")]
+    EmptyTransactionSeed { plugin: String },
+    #[error("plugin `{plugin}` returned source namespace `{actual}`; expected `{expected}`")]
+    SourceNamespaceMismatch {
+        plugin: String,
+        actual: String,
+        expected: String,
+    },
+    #[error("plugin `{plugin}` returned source address with empty {field}")]
+    InvalidSourceAddress { plugin: String, field: &'static str },
 }
 
 impl From<wasmtime::Error> for PluginHostError {
@@ -159,6 +169,7 @@ impl PluginManager {
             engine: self.engine.clone(),
             component: plugin.component.clone(),
             plugin_id: plugin.manifest.id.clone(),
+            namespace: plugin.manifest.namespace.clone(),
         })
     }
 
@@ -217,6 +228,7 @@ pub struct WasmPluginAdapter {
     engine: Engine,
     component: Component,
     plugin_id: String,
+    namespace: String,
 }
 
 impl Adapter<PluginModel> for WasmPluginAdapter {
@@ -237,7 +249,11 @@ impl Adapter<PluginModel> for WasmPluginAdapter {
             kind: plugin_error_kind(error.kind),
             message: error.message,
         })?;
-        conversion::transaction(transaction).map_err(PluginHostError::Conversion)
+        let mut transaction =
+            conversion::transaction(transaction).map_err(PluginHostError::Conversion)?;
+        validate_transaction(&self.plugin_id, &self.namespace, &transaction)?;
+        transaction.seed = qualify_seed(&self.plugin_id, &self.namespace, &transaction.seed);
+        Ok(transaction)
     }
 
     fn core_error(&self, error: CoreError) -> Self::Error {
@@ -245,6 +261,73 @@ impl Adapter<PluginModel> for WasmPluginAdapter {
     }
 }
 
+const PLUGIN_SEED_VERSION: &str = "provenance-plugin/v2";
+
+fn qualify_seed(plugin_id: &str, namespace: &str, seed: &str) -> String {
+    format!(
+        "{PLUGIN_SEED_VERSION}\0{}:{}\0{}:{}\0{}:{}",
+        namespace.len(),
+        namespace,
+        plugin_id.len(),
+        plugin_id,
+        seed.len(),
+        seed
+    )
+}
+
+fn validate_source_address(
+    plugin_id: &str,
+    address: &provenance_core::EntityAddress<PluginModel>,
+) -> Result<(), PluginHostError> {
+    for (field, value) in [
+        ("namespace", address.namespace.as_str()),
+        ("kind", address.kind.as_str()),
+        ("id", address.id.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(PluginHostError::InvalidSourceAddress {
+                plugin: plugin_id.to_owned(),
+                field,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_transaction(
+    plugin_id: &str,
+    namespace: &str,
+    transaction: &Transaction<PluginModel>,
+) -> Result<(), PluginHostError> {
+    if transaction.seed.trim().is_empty() {
+        return Err(PluginHostError::EmptyTransactionSeed {
+            plugin: plugin_id.to_owned(),
+        });
+    }
+    let Some(source) = &transaction.source else {
+        return Ok(());
+    };
+
+    validate_source_address(plugin_id, &source.id)?;
+    if source.id.namespace.as_str() != namespace {
+        return Err(PluginHostError::SourceNamespaceMismatch {
+            plugin: plugin_id.to_owned(),
+            actual: source.id.namespace.as_str().to_owned(),
+            expected: namespace.to_owned(),
+        });
+    }
+    for parent in &source.parents {
+        validate_source_address(plugin_id, parent)?;
+        if parent.namespace.as_str() != namespace {
+            return Err(PluginHostError::SourceNamespaceMismatch {
+                plugin: plugin_id.to_owned(),
+                actual: parent.namespace.as_str().to_owned(),
+                expected: namespace.to_owned(),
+            });
+        }
+    }
+    Ok(())
+}
 fn convert_manifest(manifest: bindings::PluginManifest) -> Result<PluginManifest, PluginHostError> {
     Ok(PluginManifest {
         id: manifest.id,
