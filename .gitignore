@@ -1,5 +1,8 @@
 /target
 
+# Ignore a package-local target directory when building the guest outside the root target.
+/provenance-plugin/examples/agent/target
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

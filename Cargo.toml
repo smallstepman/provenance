@@ -5,8 +5,10 @@ members = [
     "provenance-jj",
     "provenance-plugin",
     "provenance-plugin/examples/hello",
-    "provenance-storage",
     "provenance-plugin/examples/beads",
+    "provenance-plugin/examples/agent",
+    "provenance-storage",
+    "provenance-nemo-relay",
 ]
 resolver = "3"
 
