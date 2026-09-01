@@ -9,6 +9,7 @@ members = [
     "provenance-plugin/examples/agent",
     "provenance-storage",
     "provenance-nemo-relay",
+    "provenance-output-tty",
 ]
 resolver = "3"
 

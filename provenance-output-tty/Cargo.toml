@@ -1,0 +1,12 @@
+[package]
+name = "provenance-output-tty"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "provenance_output_tty"
+path = "src/lib.rs"
+
+[dependencies]
+provenance-core = { workspace = true }
+provenance-data-model = { workspace = true }

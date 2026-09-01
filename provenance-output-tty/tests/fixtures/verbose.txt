@@ -1,0 +1,380 @@
+Operation op-root-schemas
+├─ attributes (1)
+│  ╰─ fixture = "interconnected beads, jj, and agent graph"
+╰─ facts (4)
+   ├─ SchemaRegistered
+   │  ├─ key beads@1
+   │  ├─ entities (1)
+   │  │  ╰─ entity issue
+   │  │     ├─ fields (11)
+   │  │     │  ├─ assignee: string (optional)
+   │  │     │  ├─ created_at: string (required)
+   │  │     │  ├─ description: string (optional)
+   │  │     │  ├─ issue_id: string (required)
+   │  │     │  ├─ issue_type: string (required)
+   │  │     │  ├─ labels: list<string> (optional)
+   │  │     │  ├─ parent_id: string (optional)
+   │  │     │  ├─ priority: integer (required)
+   │  │     │  ├─ status: string (required)
+   │  │     │  ├─ title: string (required)
+   │  │     │  ╰─ updated_at: string (required)
+   │  │     ╰─ allow-unknown-fields false
+   │  ╰─ relations (2)
+   │     ├─ relation beads/belongs-to
+   │     │  ├─ from beads/issue
+   │     │  ├─ to beads/issue
+   │     │  ╰─ explanation supporting / from-explained-by-to
+   │     ╰─ relation beads/depends-on
+   │        ├─ from beads/issue
+   │        ├─ to beads/issue
+   │        ╰─ explanation supporting / from-explained-by-to
+   ├─ SchemaRegistered
+   │  ├─ key jj@1
+   │  ├─ entities (4)
+   │  │  ├─ entity change
+   │  │  │  ├─ fields (2)
+   │  │  │  │  ├─ change_id: string (required)
+   │  │  │  │  ╰─ current_commit: entity<jj/commit> (required)
+   │  │  │  ╰─ allow-unknown-fields false
+   │  │  ├─ entity commit
+   │  │  │  ├─ fields (5)
+   │  │  │  │  ├─ author: string (required)
+   │  │  │  │  ├─ change_id: string (required)
+   │  │  │  │  ├─ commit_id: string (required)
+   │  │  │  │  ├─ description: string (required)
+   │  │  │  │  ╰─ timestamp: string (required)
+   │  │  │  ╰─ allow-unknown-fields false
+   │  │  ├─ entity operation
+   │  │  │  ├─ fields (2)
+   │  │  │  │  ├─ description: string (required)
+   │  │  │  │  ╰─ operation_id: string (required)
+   │  │  │  ╰─ allow-unknown-fields false
+   │  │  ╰─ entity workspace
+   │  │     ├─ fields (1)
+   │  │     │  ╰─ workspace_id: string (required)
+   │  │     ╰─ allow-unknown-fields false
+   │  ╰─ relations (6)
+   │     ├─ relation jj/belongs-to-change
+   │     │  ├─ from jj/commit
+   │     │  ├─ to jj/change
+   │     │  ╰─ explanation primary / from-explained-by-to
+   │     ├─ relation jj/contains
+   │     │  ├─ from jj/workspace
+   │     │  ├─ to jj/commit
+   │     │  ╰─ explanation contextual / to-explained-by-from
+   │     ├─ relation jj/currently-at
+   │     │  ├─ from jj/workspace
+   │     │  ├─ to jj/commit
+   │     │  ╰─ explanation contextual / to-explained-by-from
+   │     ├─ relation jj/follows
+   │     │  ├─ from jj/operation
+   │     │  ├─ to jj/operation
+   │     │  ╰─ explanation supporting / from-explained-by-to
+   │     ├─ relation jj/predecessor-of
+   │     │  ├─ from jj/commit
+   │     │  ├─ to jj/commit
+   │     │  ╰─ explanation primary / from-explained-by-to
+   │     ╰─ relation jj/produced
+   │        ├─ from jj/operation
+   │        ├─ to jj/commit
+   │        ╰─ explanation primary / to-explained-by-from
+   ├─ SchemaRegistered
+   │  ├─ key agent@1
+   │  ├─ entities (1)
+   │  │  ╰─ entity event
+   │  │     ├─ fields (27)
+   │  │     │  ├─ actor-id: string (optional)
+   │  │     │  ├─ category: string (optional)
+   │  │     │  ├─ conversation-ref: string (optional)
+   │  │     │  ├─ data-present: bool (optional)
+   │  │     │  ├─ data-size: integer (optional)
+   │  │     │  ├─ event-id: string (required)
+   │  │     │  ├─ event-kind: string (required)
+   │  │     │  ├─ evidence-digest: string (optional)
+   │  │     │  ├─ evidence-length: integer (optional)
+   │  │     │  ├─ evidence-offset: integer (optional)
+   │  │     │  ├─ evidence-ref: string (optional)
+   │  │     │  ├─ harness-id: string (required)
+   │  │     │  ├─ installation-id: string (required)
+   │  │     │  ├─ metadata-present: bool (optional)
+   │  │     │  ├─ metadata-size: integer (optional)
+   │  │     │  ├─ model-name: string (optional)
+   │  │     │  ├─ name: string (required)
+   │  │     │  ├─ outcome: string (optional)
+   │  │     │  ├─ scope-attributes: list<string> (optional)
+   │  │     │  ├─ scope-category: string (optional)
+   │  │     │  ├─ session-id: string (optional)
+   │  │     │  ├─ telemetry-provider: string (optional)
+   │  │     │  ├─ telemetry-session-id: string (optional)
+   │  │     │  ├─ telemetry-session-instance-id: string (optional)
+   │  │     │  ├─ telemetry-span-id: string (optional)
+   │  │     │  ├─ telemetry-trace-id: string (optional)
+   │  │     │  ╰─ timestamp: string (required)
+   │  │     ╰─ allow-unknown-fields false
+   │  ╰─ relations (4)
+   │     ├─ relation agent/correlates-with
+   │     │  ├─ from agent/event
+   │     │  ├─ to jj/operation
+   │     │  ╰─ explanation contextual / symmetric
+   │     ├─ relation agent/implemented-by
+   │     │  ├─ from beads/issue
+   │     │  ├─ to jj/commit
+   │     │  ╰─ explanation primary / from-explained-by-to
+   │     ├─ relation agent/observed-commit
+   │     │  ├─ from agent/event
+   │     │  ├─ to jj/commit
+   │     │  ╰─ explanation supporting / from-explained-by-to
+   │     ╰─ relation agent/triggered-by
+   │        ├─ from agent/event
+   │        ├─ to beads/issue
+   │        ╰─ explanation causal / to-explained-by-from
+   ╰─ NamedQueryRegistered
+      ├─ key jj@1/why
+      ├─ input jj/commit
+      ╰─ template explain(depth=unbounded, roles=[primary, supporting])
+
+Operation op-beads-update
+├─ source beads/hook/update/bd-42/2026-08-31T12:00:01Z
+├─ parents (1)
+│  ╰─ op-root-schemas
+├─ attributes (1)
+│  ╰─ source-system = "bd"
+╰─ facts (3)
+   ├─ EntityObserved
+   │  ├─ entity beads/issue/bd-42
+   │  ├─ schema beads@1
+   │  ╰─ attributes (11)
+   │     ├─ assignee = "operator"
+   │     ├─ created_at = "2026-08-30T10:00:00Z"
+   │     ├─ description = "Keep harness history linkable without copying the transcript"
+   │     ├─ issue_id = "bd-42"
+   │     ├─ issue_type = "feature"
+   │     ├─ labels = ["provenance", "agent"]
+   │     ├─ parent_id = "bd-17"
+   │     ├─ priority = 1
+   │     ├─ status = "in_progress"
+   │     ├─ title = "Connect agent turn to JJ implementation"
+   │     ╰─ updated_at = "2026-08-31T12:00:01Z"
+   ├─ EntityObserved
+   │  ├─ entity beads/issue/bd-17
+   │  ├─ schema beads@1
+   │  ╰─ attributes (7)
+   │     ├─ created_at = "2026-08-28T09:00:00Z"
+   │     ├─ issue_id = "bd-17"
+   │     ├─ issue_type = "epic"
+   │     ├─ priority = 1
+   │     ├─ status = "open"
+   │     ├─ title = "Agent provenance integration"
+   │     ╰─ updated_at = "2026-08-30T09:00:00Z"
+   ╰─ EventRecorded
+      ├─ id beads-event-0001
+      ├─ subjects (2)
+      │  ├─ beads/issue/bd-17
+      │  ╰─ beads/issue/bd-42
+      ├─ relations (2)
+      │  ├─ beads/belongs-to
+      │  │  ├─ schema beads@1
+      │  │  ├─ from beads/issue/bd-42
+      │  │  ╰─ to beads/issue/bd-17
+      │  ╰─ beads/depends-on
+      │     ├─ schema beads@1
+      │     ├─ from beads/issue/bd-42
+      │     ╰─ to beads/issue/bd-17
+      ╰─ attributes (2)
+         ├─ hook = "update"
+         ╰─ issue-id = "bd-42"
+
+Operation op-jj-observation
+├─ source jj/operation/jj-op-0001
+├─ parents (1)
+│  ╰─ op-root-schemas
+├─ attributes (1)
+│  ╰─ source-system = "jj"
+╰─ facts (6)
+   ├─ EntityObserved
+   │  ├─ entity jj/operation/jj-op-0001
+   │  ├─ schema jj@1
+   │  ╰─ attributes (2)
+   │     ├─ description = "rebase and amend agent change"
+   │     ╰─ operation_id = "jj-op-0001"
+   ├─ EntityObserved
+   │  ├─ entity jj/commit/deadbeef0001
+   │  ├─ schema jj@1
+   │  ╰─ attributes (5)
+   │     ├─ author = "Marcin <marcin@example.com>"
+   │     ├─ change_id = "change-abc"
+   │     ├─ commit_id = "deadbeef0001"
+   │     ├─ description = "Implement agent provenance links"
+   │     ╰─ timestamp = "2026-08-31T11:59:58Z@+00:00"
+   ├─ EntityObserved
+   │  ├─ entity jj/commit/deadbeef0000
+   │  ├─ schema jj@1
+   │  ╰─ attributes (5)
+   │     ├─ author = "Marcin <marcin@example.com>"
+   │     ├─ change_id = "change-abc"
+   │     ├─ commit_id = "deadbeef0000"
+   │     ├─ description = "Initial provenance fixture"
+   │     ╰─ timestamp = "2026-08-31T11:59:58Z@+00:00"
+   ├─ EntityObserved
+   │  ├─ entity jj/change/change-abc
+   │  ├─ schema jj@1
+   │  ╰─ attributes (2)
+   │     ├─ change_id = "change-abc"
+   │     ╰─ current_commit = jj/commit/deadbeef0001
+   ├─ EntityObserved
+   │  ├─ entity jj/workspace/default
+   │  ├─ schema jj@1
+   │  ╰─ attributes (1)
+   │     ╰─ workspace_id = "default"
+   ╰─ EventRecorded
+      ├─ id jj-event-0001
+      ├─ subjects (5)
+      │  ├─ jj/change/change-abc
+      │  ├─ jj/commit/deadbeef0000
+      │  ├─ jj/commit/deadbeef0001
+      │  ├─ jj/operation/jj-op-0001
+      │  ╰─ jj/workspace/default
+      ├─ relations (6)
+      │  ├─ jj/belongs-to-change
+      │  │  ├─ schema jj@1
+      │  │  ├─ from jj/commit/deadbeef0001
+      │  │  ╰─ to jj/change/change-abc
+      │  ├─ jj/contains
+      │  │  ├─ schema jj@1
+      │  │  ├─ from jj/workspace/default
+      │  │  ╰─ to jj/commit/deadbeef0001
+      │  ├─ jj/currently-at
+      │  │  ├─ schema jj@1
+      │  │  ├─ from jj/workspace/default
+      │  │  ╰─ to jj/commit/deadbeef0001
+      │  ├─ jj/follows
+      │  │  ├─ schema jj@1
+      │  │  ├─ from jj/operation/jj-op-0001
+      │  │  ╰─ to jj/operation/jj-op-0000
+      │  ├─ jj/predecessor-of
+      │  │  ├─ schema jj@1
+      │  │  ├─ from jj/commit/deadbeef0001
+      │  │  ╰─ to jj/commit/deadbeef0000
+      │  ╰─ jj/produced
+      │     ├─ schema jj@1
+      │     ├─ from jj/operation/jj-op-0001
+      │     ╰─ to jj/commit/deadbeef0001
+      ╰─ attributes (1)
+         ╰─ operation-kind = "rebase"
+
+Operation op-agent-turn
+├─ source agent/event/agent-event-0001/start
+├─ parents (3)
+│  ├─ op-beads-update
+│  ├─ op-jj-observation
+│  ╰─ op-root-schemas
+├─ attributes (1)
+│  ╰─ projection = "audit"
+╰─ facts (6)
+   ├─ SessionOpened
+   │  ├─ id session-0001
+   │  ╰─ attributes (2)
+   │     ├─ harness-id = "codex"
+   │     ╰─ installation-id = "workstation-a"
+   ├─ ActorDeclared
+   │  ├─ id actor-operator
+   │  ├─ session session-0001
+   │  ╰─ attributes (2)
+   │     ├─ harness = "codex"
+   │     ╰─ role = "operator"
+   ├─ EntityObserved
+   │  ├─ entity agent/event/agent-event-0001/start
+   │  ├─ schema agent@1
+   │  ╰─ attributes (26)
+   │     ├─ actor-id = "actor-operator"
+   │     ├─ category = "llm"
+   │     ├─ conversation-ref = "~/.omp/agents/session-0001.jsonl"
+   │     ├─ data-present = true
+   │     ├─ data-size = 317
+   │     ├─ event-id = "agent-event-0001"
+   │     ├─ event-kind = "scope"
+   │     ├─ evidence-digest = "sha256:evidence-0001"
+   │     ├─ evidence-length = 1210
+   │     ├─ evidence-ref = "atof/events.jsonl#offset=777"
+   │     ├─ harness-id = "codex"
+   │     ├─ installation-id = "workstation-a"
+   │     ├─ metadata-present = true
+   │     ├─ metadata-size = 566
+   │     ├─ model-name = "gpt-5.6-luna"
+   │     ├─ name = "codex-turn"
+   │     ├─ outcome = "success"
+   │     ├─ scope-attributes = ["llm", "turn"]
+   │     ├─ scope-category = "start"
+   │     ├─ session-id = "session-0001"
+   │     ├─ telemetry-provider = "phoenix"
+   │     ├─ telemetry-session-id = "phoenix-session-0001"
+   │     ├─ telemetry-session-instance-id = "phoenix-instance-0001"
+   │     ├─ telemetry-span-id = "span-000000000001"
+   │     ├─ telemetry-trace-id = "trace-000000000001"
+   │     ╰─ timestamp = "2026-08-31T12:00:00Z"
+   ├─ EventRecorded
+   │  ├─ id agent-event-0001
+   │  ├─ session session-0001
+   │  ├─ actor actor-operator
+   │  ├─ subjects (4)
+   │  │  ├─ agent/event/agent-event-0001/start
+   │  │  ├─ beads/issue/bd-42
+   │  │  ├─ jj/commit/deadbeef0001
+   │  │  ╰─ jj/operation/jj-op-0001
+   │  ├─ relations (4)
+   │  │  ├─ agent/correlates-with
+   │  │  │  ├─ schema agent@1
+   │  │  │  ├─ from agent/event/agent-event-0001/start
+   │  │  │  ╰─ to jj/operation/jj-op-0001
+   │  │  ├─ agent/implemented-by
+   │  │  │  ├─ schema agent@1
+   │  │  │  ├─ from beads/issue/bd-42
+   │  │  │  ╰─ to jj/commit/deadbeef0001
+   │  │  ├─ agent/observed-commit
+   │  │  │  ├─ schema agent@1
+   │  │  │  ├─ from agent/event/agent-event-0001/start
+   │  │  │  ╰─ to jj/commit/deadbeef0001
+   │  │  ╰─ agent/triggered-by
+   │  │     ├─ schema agent@1
+   │  │     ├─ from agent/event/agent-event-0001/start
+   │  │     ╰─ to beads/issue/bd-42
+   │  ├─ requires (1)
+   │  │  ╰─ agent/event/agent-event-0001/start
+   │  │     ╰─ strength escrowed
+   │  ╰─ attributes (26)
+   │     ├─ actor-id = "actor-operator"
+   │     ├─ category = "llm"
+   │     ├─ conversation-ref = "~/.omp/agents/session-0001.jsonl"
+   │     ├─ data-present = true
+   │     ├─ data-size = 317
+   │     ├─ event-id = "agent-event-0001"
+   │     ├─ event-kind = "scope"
+   │     ├─ evidence-digest = "sha256:evidence-0001"
+   │     ├─ evidence-length = 1210
+   │     ├─ evidence-ref = "atof/events.jsonl#offset=777"
+   │     ├─ harness-id = "codex"
+   │     ├─ installation-id = "workstation-a"
+   │     ├─ metadata-present = true
+   │     ├─ metadata-size = 566
+   │     ├─ model-name = "gpt-5.6-luna"
+   │     ├─ name = "codex-turn"
+   │     ├─ outcome = "success"
+   │     ├─ scope-attributes = ["llm", "turn"]
+   │     ├─ scope-category = "start"
+   │     ├─ session-id = "session-0001"
+   │     ├─ telemetry-provider = "phoenix"
+   │     ├─ telemetry-session-id = "phoenix-session-0001"
+   │     ├─ telemetry-session-instance-id = "phoenix-instance-0001"
+   │     ├─ telemetry-span-id = "span-000000000001"
+   │     ├─ telemetry-trace-id = "trace-000000000001"
+   │     ╰─ timestamp = "2026-08-31T12:00:00Z"
+   ├─ RetentionClaimed
+   │  ├─ id claim-agent-event-0001
+   │  ├─ owner event/agent-event-0001
+   │  ├─ resource agent/event/agent-event-0001/start
+   │  ╰─ strength escrowed
+   ╰─ ResourceObserved
+      ├─ resource agent/event/agent-event-0001/start
+      ├─ availability local
+      ├─ integrity verified
+      ╰─ observed-retention escrowed

@@ -1,0 +1,26 @@
+Operation op-root-sche… · facts 4
+  Fact SchemaRegistered
+  Fact SchemaRegistered
+  Fact SchemaRegistered
+  Fact NamedQueryRegistered
+
+Operation op-beads-upd… · source beads/hook/update/bd-42… · parents 1 · facts 3
+  Fact EntityObserved
+  Fact EntityObserved
+  Event beads-event-…
+
+Operation op-jj-observ… · source jj/operation/jj-op-0001 · parents 1 · facts 6
+  Fact EntityObserved
+  Fact EntityObserved
+  Fact EntityObserved
+  Fact EntityObserved
+  Fact EntityObserved
+  Event jj-event-000…
+
+Operation op-agent-tur… · source agent/event/agent-event-… · parents 3 · facts 6
+  Fact SessionOpened
+  Fact ActorDeclared
+  Fact EntityObserved
+  Event codex-turn · phase start · 2026-08-31T12:00:00Z · session session-0001 · actor actor-operat… · telemetry phoenix trace trace-000000… span span-0000000… session phoenix-sess… instance phoenix-inst…
+  Fact RetentionClaimed
+  Fact ResourceObserved
