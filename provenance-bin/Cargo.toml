@@ -1,0 +1,24 @@
+[package]
+name = "provenance-bin"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "jj-prov"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+jj-lib = { workspace = true }
+provenance-core = { workspace = true }
+provenance-jj = { path = "../provenance-jj", features = ["plugins"] }
+provenance-output-tty = { path = "../provenance-output-tty" }
+provenance-plugin = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+wit-component = { workspace = true }

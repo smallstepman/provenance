@@ -4,7 +4,8 @@
 //! about storage, terminals, telemetry clients, or provider URLs. The compact
 //! mode is suitable for the default `show` command; verbose mode exposes the
 //! operation's complete semantic envelope without using `Debug` on the
-//! provenance model.
+//! provenance model. Chronicle mode renders a bounded state-backed `why`
+//! explanation with stable handles, folded counts, and chronological records.
 
 use provenance_core::{
     Actor, Attributes, Availability, EntityAddress, EntityObservation, EntityRef,
@@ -14,17 +15,91 @@ use provenance_core::{
     RetentionStrength, SchemaDefinition, SchemaKey, Session, SourceAnchor, Value, ValueType,
 };
 use provenance_data_model::{Id, NodeRef, NodeType};
+mod chronicle;
+
+pub use chronicle::{ChronicleQuery, render_chronicle};
 use std::fmt::{Display, Write as _};
 
 const COMPACT_ID_LENGTH: usize = 12;
 const COMPACT_TEXT_LENGTH: usize = 48;
 const VALUE_TEXT_LENGTH: usize = 160;
 const VALUE_ITEM_LIMIT: usize = 8;
+const COMPACT_ATTRIBUTE_LIMIT: usize = 12;
+const COMPACT_ATTRIBUTE_PRIORITY: &[&str] = &[
+    "issue-id",
+    "issue_id",
+    "title",
+    "status",
+    "description",
+    "parent-id",
+    "parent_id",
+    "issue-type",
+    "issue_type",
+    "priority",
+    "assignee",
+    "labels",
+    "created-at",
+    "created_at",
+    "updated-at",
+    "updated_at",
+    "commit-id",
+    "commit_id",
+    "change-id",
+    "change_id",
+    "author",
+    "operation-id",
+    "operation_id",
+    "current-commit",
+    "current_commit",
+    "workspace-id",
+    "workspace_id",
+    "event-id",
+    "event_id",
+    "name",
+    "event-kind",
+    "timestamp",
+    "occurred-at",
+    "outcome",
+    "harness",
+    "harness-id",
+    "installation-id",
+    "conversation-ref",
+    "evidence-ref",
+    "evidence-digest",
+    "telemetry-provider",
+    "trace-provider",
+    "provider",
+    "telemetry-trace-id",
+    "trace-id",
+    "telemetry-span-id",
+    "span-id",
+    "telemetry-session-id",
+    "telemetry-session-instance-id",
+    "actor-id",
+    "session-id",
+    "scope-category",
+    "category",
+    "scope-attributes",
+    "data-present",
+    "data-size",
+    "metadata-present",
+    "metadata-size",
+    "hook",
+    "operation-kind",
+    "projection",
+    "source-system",
+    "reason",
+    "role",
+    "phase",
+    "evidence-length",
+    "evidence-offset",
+    "model-name",
+];
 
 /// Output detail level.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum RenderMode {
-    /// A short operation header followed by one-line event summaries.
+    /// A bounded operation/fact summary with exact graph handles and key attributes.
     #[default]
     Compact,
     /// A deterministic tree containing operation, fact, relation, and value details.
@@ -47,7 +122,7 @@ impl TtyRenderer {
         Self { mode }
     }
 
-    /// Creates the default narrow renderer.
+    /// Creates the bounded renderer with exact graph handles.
     pub const fn compact() -> Self {
         Self::new(RenderMode::Compact)
     }
@@ -80,7 +155,7 @@ impl TtyRenderer {
     }
 }
 
-/// Renders one operation using the narrow default layout.
+/// Renders one operation with exact graph handles and bounded semantic details.
 pub fn render_operation<M>(operation: &Operation<M>) -> String
 where
     M: Model,
@@ -107,15 +182,20 @@ where
     M::ExternalId: Display,
 {
     let mut output = String::new();
-    write!(output, "Operation {}", format_id(&operation.id, true))
+    write!(output, "Operation {}", format_id(&operation.id, false))
         .expect("writing to String cannot fail");
 
     if let Some(source) = &operation.source {
-        write!(output, " · source {}", format_address(source, true))
+        write!(output, " · source {}", format_address(source, false))
             .expect("writing to String cannot fail");
     }
     if !operation.parents.is_empty() {
-        write!(output, " · parents {}", operation.parents.len())
+        let parents = operation
+            .parents
+            .iter()
+            .map(|parent| format_id(parent, false))
+            .collect::<Vec<_>>();
+        write!(output, " · parents [{}]", parents.join(", "))
             .expect("writing to String cannot fail");
     }
     if !operation.facts.is_empty() {
@@ -124,20 +204,143 @@ where
     }
 
     for fact in &operation.facts {
-        match fact {
-            Fact::EventRecorded(event) => {
-                output.push('\n');
-                output.push_str(&compact_event(event));
-            }
-            other => {
-                output.push('\n');
-                write!(output, "  Fact {}", fact_label(other))
-                    .expect("writing to String cannot fail");
-            }
-        }
+        output.push('\n');
+        compact_fact(&mut output, fact);
     }
 
     output
+}
+
+fn compact_fact<M>(output: &mut String, fact: &Fact<M>)
+where
+    M: Model,
+    M::Id: Display,
+    M::ExternalId: Display,
+{
+    match fact {
+        Fact::SchemaRegistered(schema) => output.push_str(&compact_schema(schema)),
+        Fact::NamedQueryRegistered(query) => output.push_str(&format!(
+            "  NamedQueryRegistered {} · input {} · {}",
+            format_query_key(&query.key),
+            format_entity_type_pattern(&query.input),
+            format_query_template(&query.template)
+        )),
+        Fact::SourceAnchored(anchor) => output.push_str(&format!(
+            "  SourceAnchored {} · operation {}",
+            format_address(&anchor.source, false),
+            format_id(&anchor.operation, false)
+        )),
+        Fact::SessionOpened(session) => {
+            let mut line = format!("  SessionOpened {}", format_id(&session.id, false));
+            if let Some(parent) = &session.parent {
+                write!(line, " · parent {}", format_id(parent, false))
+                    .expect("writing to String cannot fail");
+            }
+            append_compact_attributes(&mut line, &session.attributes, &[]);
+            output.push_str(&line);
+        }
+        Fact::SessionEnded { session } => {
+            write!(output, "  SessionEnded {}", format_id(session, false))
+                .expect("writing to String cannot fail");
+        }
+        Fact::ActorDeclared(actor) => {
+            let mut line = format!("  ActorDeclared {}", format_id(&actor.id, false));
+            if let Some(session) = &actor.session {
+                write!(line, " · session {}", format_id(session, false))
+                    .expect("writing to String cannot fail");
+            }
+            append_compact_attributes(&mut line, &actor.attributes, &[]);
+            output.push_str(&line);
+        }
+        Fact::ObjectDeclared(object) => {
+            let mut line = format!(
+                "  ObjectDeclared {} · payload opaque",
+                format_id(&object.id, false)
+            );
+            append_compact_attributes(&mut line, &object.attributes, &[]);
+            output.push_str(&line);
+        }
+        Fact::EntityObserved(observation) => {
+            let mut line = format!(
+                "  Entity {} · schema {}",
+                format_address(&observation.entity, false),
+                format_schema_key(&observation.schema)
+            );
+            append_compact_attributes(&mut line, &observation.attributes, &[]);
+            output.push_str(&line);
+        }
+        Fact::EventRecorded(event) => output.push_str(&compact_event(event)),
+        Fact::ReplicaDeclared(replica) => {
+            let mut line = format!("  ReplicaDeclared {}", format_id(&replica.id, false));
+            append_compact_attributes(&mut line, &replica.attributes, &[]);
+            output.push_str(&line);
+        }
+        Fact::RetentionClaimed(claim) => {
+            write!(
+                output,
+                "  RetentionClaimed {} · owner {} · resource {} · strength {}",
+                format_id(&claim.id, false),
+                format_retention_owner(&claim.owner, false),
+                format_entity_ref(&claim.resource.entity, false),
+                format_retention_strength(claim.strength)
+            )
+            .expect("writing to String cannot fail");
+        }
+        Fact::RetentionReleased { claim } => {
+            write!(output, "  RetentionReleased {}", format_id(claim, false))
+                .expect("writing to String cannot fail");
+        }
+        Fact::ResourceObserved {
+            resource,
+            observation,
+        } => {
+            write!(
+                output,
+                "  ResourceObserved {} · availability {} · integrity {}",
+                format_entity_ref(&resource.entity, false),
+                format_availability(&observation.availability, false),
+                format_integrity(observation.integrity)
+            )
+            .expect("writing to String cannot fail");
+            if let Some(retention) = observation.observed_retention {
+                write!(
+                    output,
+                    " · observed-retention {}",
+                    format_retention_strength(retention)
+                )
+                .expect("writing to String cannot fail");
+            }
+        }
+    }
+}
+
+fn compact_schema(schema: &SchemaDefinition) -> String {
+    let mut line = format!("  SchemaRegistered {}", format_schema_key(&schema.key));
+    if !schema.entities.is_empty() {
+        let entities = schema
+            .entities
+            .values()
+            .map(|entity| {
+                format!(
+                    "{}/{}",
+                    entity.entity_type.namespace.as_str(),
+                    entity.entity_type.kind.as_str()
+                )
+            })
+            .collect::<Vec<_>>();
+        write!(line, " · entities [{}]", entities.join(", "))
+            .expect("writing to String cannot fail");
+    }
+    if !schema.relations.is_empty() {
+        let relations = schema
+            .relations
+            .values()
+            .map(|relation| format_relation_type(&relation.relation_type))
+            .collect::<Vec<_>>();
+        write!(line, " · relations [{}]", relations.join(", "))
+            .expect("writing to String cannot fail");
+    }
+    line
 }
 
 fn compact_event<M>(event: &Event<M>) -> String
@@ -148,8 +351,12 @@ where
 {
     let name = attribute_string(&event.attributes, "name")
         .or_else(|| attribute_string(&event.attributes, "event-kind"))
-        .unwrap_or_else(|| format_id(&event.id, true));
-    let mut output = format!("  Event {}", compact_text(&name, COMPACT_TEXT_LENGTH));
+        .unwrap_or_else(|| format_id(&event.id, false));
+    let mut output = format!(
+        "  Event {} · id {}",
+        compact_text(&name, COMPACT_TEXT_LENGTH),
+        format_id(&event.id, false)
+    );
 
     if let Some(phase) = event_phase(&event.attributes) {
         write!(
@@ -162,25 +369,99 @@ where
     if let Some(timestamp) = attribute_string(&event.attributes, "timestamp")
         .or_else(|| attribute_string(&event.attributes, "occurred-at"))
     {
-        write!(
-            output,
-            " · {}",
-            compact_text(&timestamp, COMPACT_TEXT_LENGTH)
-        )
-        .expect("writing to String cannot fail");
+        write!(output, " · at {}", clean_text(&timestamp)).expect("writing to String cannot fail");
     }
     if let Some(session) = &event.session {
-        write!(output, " · session {}", format_id(session, true))
+        write!(output, " · session {}", format_id(session, false))
             .expect("writing to String cannot fail");
     }
     if let Some(actor) = &event.actor {
-        write!(output, " · actor {}", format_id(actor, true))
+        write!(output, " · actor {}", format_id(actor, false))
             .expect("writing to String cannot fail");
     }
     if let Some(telemetry) = compact_telemetry(&event.attributes) {
         write!(output, " · {}", telemetry).expect("writing to String cannot fail");
     }
+    append_compact_attributes(
+        &mut output,
+        &event.attributes,
+        &[
+            "name",
+            "event-id",
+            "event-kind",
+            "scope-category",
+            "category",
+            "timestamp",
+            "occurred-at",
+            "session-id",
+            "actor-id",
+            "telemetry-provider",
+            "trace-provider",
+            "provider",
+            "telemetry-trace-id",
+            "trace-id",
+            "telemetry-span-id",
+            "span-id",
+            "telemetry-session-id",
+            "telemetry-session-instance-id",
+        ],
+    );
 
+    if !event.parents.is_empty() {
+        let parents = event
+            .parents
+            .iter()
+            .map(|parent| format_id(parent, false))
+            .collect::<Vec<_>>();
+        write!(output, "\n    parents [{}]", parents.join(", "))
+            .expect("writing to String cannot fail");
+    }
+    if !event.subjects.is_empty() {
+        let subjects = event
+            .subjects
+            .iter()
+            .map(|subject| format_entity_ref(subject, false))
+            .collect::<Vec<_>>();
+        write!(output, "\n    subjects [{}]", subjects.join(", "))
+            .expect("writing to String cannot fail");
+    }
+    if !event.relations.is_empty() {
+        output.push_str("\n    relations");
+        for relation in &event.relations {
+            write!(output, "\n      {}", compact_relation(relation))
+                .expect("writing to String cannot fail");
+        }
+    }
+    if !event.requires.is_empty() {
+        output.push_str("\n    requires");
+        for requirement in &event.requires {
+            write!(
+                output,
+                "\n      {} ({})",
+                format_entity_ref(&requirement.resource.entity, false),
+                format_retention_strength(requirement.strength)
+            )
+            .expect("writing to String cannot fail");
+        }
+    }
+
+    output
+}
+
+fn compact_relation<M>(relation: &Relation<M>) -> String
+where
+    M: Model,
+    M::Id: Display,
+    M::ExternalId: Display,
+{
+    let mut output = format!(
+        "{} [{}]: {} -> {}",
+        format_relation_type(&relation.relation_type),
+        format_schema_key(&relation.schema),
+        format_entity_ref(&relation.from, false),
+        format_entity_ref(&relation.to, false)
+    );
+    append_compact_attributes(&mut output, &relation.attributes, &[]);
     output
 }
 
@@ -221,42 +502,63 @@ where
 
     let mut output = String::from("telemetry");
     if let Some(provider) = provider {
-        write!(output, " {}", compact_text(&provider, COMPACT_TEXT_LENGTH))
-            .expect("writing to String cannot fail");
+        write!(output, " {}", clean_text(&provider)).expect("writing to String cannot fail");
     }
     if let Some(trace) = trace {
-        write!(
-            output,
-            " trace {}",
-            compact_text(&short_id(&trace), COMPACT_TEXT_LENGTH)
-        )
-        .expect("writing to String cannot fail");
+        write!(output, " trace {}", clean_text(&trace)).expect("writing to String cannot fail");
     }
     if let Some(span) = span {
-        write!(
-            output,
-            " span {}",
-            compact_text(&short_id(&span), COMPACT_TEXT_LENGTH)
-        )
-        .expect("writing to String cannot fail");
+        write!(output, " span {}", clean_text(&span)).expect("writing to String cannot fail");
     }
     if let Some(session) = session {
-        write!(
-            output,
-            " session {}",
-            compact_text(&short_id(&session), COMPACT_TEXT_LENGTH)
-        )
-        .expect("writing to String cannot fail");
+        write!(output, " session {}", clean_text(&session)).expect("writing to String cannot fail");
     }
     if let Some(instance) = instance {
-        write!(
-            output,
-            " instance {}",
-            compact_text(&short_id(&instance), COMPACT_TEXT_LENGTH)
-        )
-        .expect("writing to String cannot fail");
+        write!(output, " instance {}", clean_text(&instance))
+            .expect("writing to String cannot fail");
     }
     Some(output)
+}
+
+fn append_compact_attributes<M>(output: &mut String, attributes: &Attributes<M>, excluded: &[&str])
+where
+    M: Model,
+    M::Id: Display,
+    M::ExternalId: Display,
+{
+    let considered = attributes
+        .iter()
+        .filter(|(name, _)| !excluded.contains(&name.as_str()))
+        .count();
+    let mut selected = 0;
+    for candidate in COMPACT_ATTRIBUTE_PRIORITY.iter().copied() {
+        if selected == COMPACT_ATTRIBUTE_LIMIT || excluded.contains(&candidate) {
+            continue;
+        }
+        let Some((name, value)) = attributes
+            .iter()
+            .find(|(name, _)| name.as_str() == candidate)
+        else {
+            continue;
+        };
+        if selected == 0 {
+            output.push_str(" · ");
+        } else {
+            output.push_str(", ");
+        }
+        write!(output, "{}={}", name.as_str(), format_value(value, false))
+            .expect("writing to String cannot fail");
+        selected += 1;
+    }
+    let omitted = considered.saturating_sub(selected);
+    if omitted > 0 {
+        if selected == 0 {
+            output.push_str(" · ");
+        } else {
+            output.push_str(", ");
+        }
+        write!(output, "+{} attrs omitted", omitted).expect("writing to String cannot fail");
+    }
 }
 
 fn render_verbose<M>(operation: &Operation<M>) -> String
@@ -1052,24 +1354,6 @@ fn format_integrity(integrity: Integrity) -> &'static str {
     }
 }
 
-fn fact_label<M: Model>(fact: &Fact<M>) -> &'static str {
-    match fact {
-        Fact::SchemaRegistered(_) => "SchemaRegistered",
-        Fact::NamedQueryRegistered(_) => "NamedQueryRegistered",
-        Fact::SourceAnchored(_) => "SourceAnchored",
-        Fact::SessionOpened(_) => "SessionOpened",
-        Fact::SessionEnded { .. } => "SessionEnded",
-        Fact::ActorDeclared(_) => "ActorDeclared",
-        Fact::ObjectDeclared(_) => "ObjectDeclared",
-        Fact::EntityObserved(_) => "EntityObserved",
-        Fact::EventRecorded(_) => "EventRecorded",
-        Fact::ReplicaDeclared(_) => "ReplicaDeclared",
-        Fact::RetentionClaimed(_) => "RetentionClaimed",
-        Fact::RetentionReleased { .. } => "RetentionReleased",
-        Fact::ResourceObserved { .. } => "ResourceObserved",
-    }
-}
-
 fn attribute_string<M: Model>(attributes: &Attributes<M>, name: &str) -> Option<String> {
     match attributes.get(&FieldName::from(name)) {
         Some(Value::String(value)) => Some(value.to_string()),
@@ -1234,14 +1518,21 @@ mod tests {
     fn default_output_is_narrow_and_omits_arbitrary_attributes() {
         let output = render_operation(&fixture_operation());
 
-        assert!(output.contains("Operation abcdef123456…"));
-        assert!(output.contains("source agent/event/01a054a97524…"));
-        assert!(output.contains("Event codex-turn · phase start"));
-        assert!(output.contains("telemetry phoenix trace 01a054a97524…"));
+        assert!(output.contains("Operation abcdef1234567890abcdef"));
+        assert!(output.contains("source agent/event/01a054a975247b408ec3120ed3303b72/start"));
+        assert!(output.contains(
+            "Event codex-turn · id event-0123456789abcdef · phase start · at 2026-08-30T21:53:06.852175+00:00 · session session-0123456789abcdef · actor actor-0123456789abcdef"
+        ));
+        assert!(output.contains(
+            "telemetry phoenix trace 01a054a975247b408ec3120ed3303b72 span 8ec3120ed3303b72"
+        ));
+        assert!(
+            output.contains("subjects [telemetry/trace/phoenix:01a054a975247b408ec3120ed3303b72]")
+        );
         assert!(!output.contains("private prompt text"));
         assert!(!output.contains("telemetry-provider"));
         assert!(!output.contains("_tag"));
-        assert_eq!(output.lines().count(), 2);
+        assert_eq!(output.lines().count(), 3);
     }
 
     #[test]

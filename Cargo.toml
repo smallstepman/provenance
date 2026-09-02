@@ -7,13 +7,16 @@ members = [
     "provenance-plugin/examples/hello",
     "provenance-plugin/examples/beads",
     "provenance-plugin/examples/agent",
+    "provenance-plugin/examples/dg",
     "provenance-storage",
     "provenance-nemo-relay",
     "provenance-output-tty",
+    "provenance-bin",
 ]
 resolver = "3"
 
 [workspace.dependencies]
+clap = { version = "4.5", features = ["derive"] }
 fs2 = "0.4"
 gix = { version = "0.85", default-features = false, features = ["parallel", "sha1", "sha256", "zlib-rs"] }
 jj-lib = { version = "0.44", default-features = true }

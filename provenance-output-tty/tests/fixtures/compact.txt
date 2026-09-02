@@ -1,26 +1,46 @@
-Operation op-root-sche… · facts 4
-  Fact SchemaRegistered
-  Fact SchemaRegistered
-  Fact SchemaRegistered
-  Fact NamedQueryRegistered
+Operation op-root-schemas · facts 4
+  SchemaRegistered beads@1 · entities [beads/issue] · relations [beads/belongs-to, beads/depends-on]
+  SchemaRegistered jj@1 · entities [jj/change, jj/commit, jj/operation, jj/workspace] · relations [jj/belongs-to-change, jj/contains, jj/currently-at, jj/follows, jj/predecessor-of, jj/produced]
+  SchemaRegistered agent@1 · entities [agent/event] · relations [agent/correlates-with, agent/implemented-by, agent/observed-commit, agent/triggered-by]
+  NamedQueryRegistered jj@1/why · input jj/commit · explain(depth=unbounded, roles=[primary, supporting])
 
-Operation op-beads-upd… · source beads/hook/update/bd-42… · parents 1 · facts 3
-  Fact EntityObserved
-  Fact EntityObserved
-  Event beads-event-…
+Operation op-beads-update · source beads/hook/update/bd-42/2026-08-31T12:00:01Z · parents [op-root-schemas] · facts 3
+  Entity beads/issue/bd-42 · schema beads@1 · issue_id="bd-42", title="Connect agent turn to JJ implementation", status="in_progress", description="Keep harness history linkable without copying the transcript", parent_id="bd-17", issue_type="feature", priority=1, assignee="operator", labels=["provenance", "agent"], created_at="2026-08-30T10:00:00Z", updated_at="2026-08-31T12:00:01Z"
+  Entity beads/issue/bd-17 · schema beads@1 · issue_id="bd-17", title="Agent provenance integration", status="open", issue_type="epic", priority=1, created_at="2026-08-28T09:00:00Z", updated_at="2026-08-30T09:00:00Z"
+  Event beads-event-0001 · id beads-event-0001 · issue-id="bd-42", hook="update"
+    subjects [beads/issue/bd-17, beads/issue/bd-42]
+    relations
+      beads/belongs-to [beads@1]: beads/issue/bd-42 -> beads/issue/bd-17
+      beads/depends-on [beads@1]: beads/issue/bd-42 -> beads/issue/bd-17
 
-Operation op-jj-observ… · source jj/operation/jj-op-0001 · parents 1 · facts 6
-  Fact EntityObserved
-  Fact EntityObserved
-  Fact EntityObserved
-  Fact EntityObserved
-  Fact EntityObserved
-  Event jj-event-000…
+Operation op-jj-observation · source jj/operation/jj-op-0001 · parents [op-root-schemas] · facts 6
+  Entity jj/operation/jj-op-0001 · schema jj@1 · description="rebase and amend agent change", operation_id="jj-op-0001"
+  Entity jj/commit/deadbeef0001 · schema jj@1 · description="Implement agent provenance links", commit_id="deadbeef0001", change_id="change-abc", author="Marcin <marcin@example.com>", timestamp="2026-08-31T11:59:58Z@+00:00"
+  Entity jj/commit/deadbeef0000 · schema jj@1 · description="Initial provenance fixture", commit_id="deadbeef0000", change_id="change-abc", author="Marcin <marcin@example.com>", timestamp="2026-08-31T11:59:58Z@+00:00"
+  Entity jj/change/change-abc · schema jj@1 · change_id="change-abc", current_commit=jj/commit/deadbeef0001
+  Entity jj/workspace/default · schema jj@1 · workspace_id="default"
+  Event jj-event-0001 · id jj-event-0001 · operation-kind="rebase"
+    subjects [jj/change/change-abc, jj/commit/deadbeef0000, jj/commit/deadbeef0001, jj/operation/jj-op-0001, jj/workspace/default]
+    relations
+      jj/belongs-to-change [jj@1]: jj/commit/deadbeef0001 -> jj/change/change-abc
+      jj/contains [jj@1]: jj/workspace/default -> jj/commit/deadbeef0001
+      jj/currently-at [jj@1]: jj/workspace/default -> jj/commit/deadbeef0001
+      jj/follows [jj@1]: jj/operation/jj-op-0001 -> jj/operation/jj-op-0000
+      jj/predecessor-of [jj@1]: jj/commit/deadbeef0001 -> jj/commit/deadbeef0000
+      jj/produced [jj@1]: jj/operation/jj-op-0001 -> jj/commit/deadbeef0001
 
-Operation op-agent-tur… · source agent/event/agent-event-… · parents 3 · facts 6
-  Fact SessionOpened
-  Fact ActorDeclared
-  Fact EntityObserved
-  Event codex-turn · phase start · 2026-08-31T12:00:00Z · session session-0001 · actor actor-operat… · telemetry phoenix trace trace-000000… span span-0000000… session phoenix-sess… instance phoenix-inst…
-  Fact RetentionClaimed
-  Fact ResourceObserved
+Operation op-agent-turn · source agent/event/agent-event-0001/start · parents [op-beads-update, op-jj-observation, op-root-schemas] · facts 6
+  SessionOpened session-0001 · harness-id="codex", installation-id="workstation-a"
+  ActorDeclared actor-operator · session session-0001 · harness="codex", role="operator"
+  Entity agent/event/agent-event-0001/start · schema agent@1 · event-id="agent-event-0001", name="codex-turn", event-kind="scope", timestamp="2026-08-31T12:00:00Z", outcome="success", harness-id="codex", installation-id="workstation-a", conversation-ref="~/.omp/agents/session-0001.jsonl", evidence-ref="atof/events.jsonl#offset=777", evidence-digest="sha256:evidence-0001", telemetry-provider="phoenix", telemetry-trace-id="trace-000000000001", +14 attrs omitted
+  Event codex-turn · id agent-event-0001 · phase start · at 2026-08-31T12:00:00Z · session session-0001 · actor actor-operator · telemetry phoenix trace trace-000000000001 span span-000000000001 session phoenix-session-0001 instance phoenix-instance-0001 · outcome="success", harness-id="codex", installation-id="workstation-a", conversation-ref="~/.omp/agents/session-0001.jsonl", evidence-ref="atof/events.jsonl#offset=777", evidence-digest="sha256:evidence-0001", scope-attributes=["llm", "turn"], data-present=true, data-size=317, metadata-present=true, metadata-size=566, evidence-length=1210, +1 attrs omitted
+    subjects [agent/event/agent-event-0001/start, beads/issue/bd-42, jj/commit/deadbeef0001, jj/operation/jj-op-0001]
+    relations
+      agent/correlates-with [agent@1]: agent/event/agent-event-0001/start -> jj/operation/jj-op-0001
+      agent/implemented-by [agent@1]: beads/issue/bd-42 -> jj/commit/deadbeef0001
+      agent/observed-commit [agent@1]: agent/event/agent-event-0001/start -> jj/commit/deadbeef0001
+      agent/triggered-by [agent@1]: agent/event/agent-event-0001/start -> beads/issue/bd-42
+    requires
+      agent/event/agent-event-0001/start (escrowed)
+  RetentionClaimed claim-agent-event-0001 · owner event/agent-event-0001 · resource agent/event/agent-event-0001/start · strength escrowed
+  ResourceObserved agent/event/agent-event-0001/start · availability local · integrity verified · observed-retention escrowed

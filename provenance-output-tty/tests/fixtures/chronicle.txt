@@ -1,0 +1,81 @@
+@chronicle 1
+query: why bd://bd-42
+target: bd://bd-42 "Connect agent turn to JJ implementation"
+timebase: UTC
+scope: causal depth=3
+summary: status="in_progress"; title="Connect agent turn to JJ implementation"; causal scope contains 9 entities, 3 events, and 12 explanatory edges across 3 records
+path: bd://bd-42 <-[agent/triggered-by]- agent://event/agent-event-0001/start -[agent/observed-commit]-> jj://deadbeef0001 -[jj/belongs-to-change]-> jj://change-abc
+folded: sessions=1 subagents=1 operations=3 entities=9 events=3 edges=12
+detail: prov://bd/bd-42
+
+2026-08-31
+11:59:58 OPERATION jj://jj-op-0001 "rebase and amend agent change"
+  operation: prov://operation/op-jj-observation
+  parents: [prov://operation/op-root-schemas]
+  source: jj://jj-op-0001
+  entities: [jj://change-abc, jj://deadbeef0000, jj://deadbeef0001, jj://default, jj://jj-op-0001]
+  operation-kind: "rebase"
+  source-system: "jj"
+  event: jj-event-0001
+  subjects: [jj://change-abc, jj://deadbeef0000, jj://deadbeef0001, jj://jj-op-0001, jj://default]
+  relation: jj://deadbeef0001 -[jj/belongs-to-change jj@1]-> jj://change-abc
+  relation: jj://default -[jj/contains jj@1]-> jj://deadbeef0001
+  relation: jj://default -[jj/currently-at jj@1]-> jj://deadbeef0001
+  relation: jj://jj-op-0001 -[jj/follows jj@1]-> jj://jj-op-0000
+  relation: jj://deadbeef0001 -[jj/predecessor-of jj@1]-> jj://deadbeef0000
+  relation: jj://jj-op-0001 -[jj/produced jj@1]-> jj://deadbeef0001
+12:00:00 AGENT agent://event/agent-event-0001/start "codex-turn"
+  operation: prov://operation/op-agent-turn
+  parents: [prov://operation/op-beads-update, prov://operation/op-jj-observation, prov://operation/op-root-schemas]
+  source: agent://event/agent-event-0001/start
+  entities: [agent://event/agent-event-0001/start]
+  event-id: "agent-event-0001"
+  outcome: "success"
+  harness-id: "codex"
+  installation-id: "workstation-a"
+  conversation-ref: "~/.omp/agents/session-0001.jsonl"
+  evidence-ref: "atof/events.jsonl#offset=777"
+  evidence-digest: "sha256:evidence-0001"
+  telemetry-provider: "phoenix"
+  telemetry-trace-id: "trace-000000000001"
+  telemetry-span-id: "span-000000000001"
+  telemetry-session-id: "phoenix-session-0001"
+  telemetry-session-instance-id: "phoenix-instance-0001"
+  event-attributes: +9 attrs omitted
+  session: session-0001
+  actor: actor-operator
+  telemetry phoenix trace trace-000000000001 span span-000000000001 session phoenix-session-0001 instance phoenix-instance-0001
+  projection: "audit"
+  event: agent-event-0001
+  subjects: [agent://event/agent-event-0001/start, bd://bd-42, jj://deadbeef0001, jj://jj-op-0001]
+  relation: agent://event/agent-event-0001/start -[agent/correlates-with agent@1]-> jj://jj-op-0001
+  relation: bd://bd-42 -[agent/implemented-by agent@1]-> jj://deadbeef0001
+  relation: agent://event/agent-event-0001/start -[agent/observed-commit agent@1]-> jj://deadbeef0001
+  relation: agent://event/agent-event-0001/start -[agent/triggered-by agent@1]-> bd://bd-42
+  retention: agent://event/agent-event-0001/start owner=event/agent-event-0001 strength=escrowed
+  resource: agent://event/agent-event-0001/start availability=local integrity=verified retention=escrowed
+12:00:01 FEATURE bd://bd-42 "Connect agent turn to JJ implementation"
+  operation: prov://operation/op-beads-update
+  parents: [prov://operation/op-root-schemas]
+  source: beads://hook/update/bd-42/2026-08-31T12:00:01Z
+  entities: [bd://bd-17, bd://bd-42]
+  status: "in_progress"
+  description: "Keep harness history linkable without copying the transcript"
+  parent_id: "bd-17"
+  issue_id: "bd-42"
+  issue_type: "feature"
+  priority: 1
+  assignee: "operator"
+  labels: ["provenance", "agent"]
+  created_at: "2026-08-30T10:00:00Z"
+  updated_at: "2026-08-31T12:00:01Z"
+  issue-id: "bd-42"
+  hook: "update"
+  source-system: "bd"
+  event: beads-event-0001
+  subjects: [bd://bd-17, bd://bd-42]
+  relation: bd://bd-42 -[beads/belongs-to beads@1]-> bd://bd-17
+  relation: bd://bd-42 -[beads/depends-on beads@1]-> bd://bd-17
+@end
+result: bd://bd-42 records=3 operations=3 entities=9 edges=12
+open: bd://bd-17 status="open", bd://bd-42 status="in_progress"
