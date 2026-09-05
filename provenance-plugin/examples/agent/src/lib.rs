@@ -43,7 +43,7 @@ impl Guest for AgentPlugin {
     fn manifest() -> guest::PluginManifest {
         guest::PluginManifest {
             id: "agent".into(),
-            abi_version: "0.1.0".into(),
+            abi_version: "0.2.0".into(),
             namespace: NAMESPACE.into(),
             schemas: vec![guest::SchemaKey {
                 namespace: NAMESPACE.into(),
@@ -289,6 +289,13 @@ impl Guest for AgentPlugin {
             }),
             intents,
             attributes: Vec::new(),
+        })
+    }
+
+    fn install(_request: guest::InstallRequest) -> Result<guest::InstallPlan, guest::PluginError> {
+        Err(guest::PluginError {
+            kind: guest::PluginErrorKind::Unsupported,
+            message: "this plugin does not install source hooks".into(),
         })
     }
 }

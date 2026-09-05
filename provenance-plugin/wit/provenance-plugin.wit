@@ -1,4 +1,4 @@
-package provenance:plugin@0.1.0;
+package provenance:plugin@0.2.0;
 
 world plugin {
   /// A plugin's stable identity and declared semantic surface.
@@ -9,6 +9,34 @@ world plugin {
     schemas: list<schema-key>,
     required-schemas: list<schema-key>,
     capabilities: list<string>,
+  }
+
+  /// Inputs used when a plugin plans source hook installation.
+  /// Paths returned by the plugin are always interpreted relative to the
+  /// project root by the host; the plugin never receives filesystem handles.
+  record install-request {
+    executable: string,
+    component: string,
+  }
+
+  /// A host-applied file operation. `expected` is required for a replace
+  /// operation unless the target already contains the desired content.
+  record file-operation {
+    path: string,
+    content: string,
+    strategy: file-strategy,
+    executable: bool,
+    expected: option<string>,
+  }
+
+  enum file-strategy {
+    create,
+    replace,
+    append,
+  }
+
+  record install-plan {
+    operations: list<file-operation>,
   }
 
   /// The host supplies a source-specific observation request. The plugin
@@ -385,4 +413,5 @@ world plugin {
 
   export manifest: func() -> plugin-manifest;
   export observe: func(request: observation-request) -> result<transaction, plugin-error>;
+  export install: func(request: install-request) -> result<install-plan, plugin-error>;
 }

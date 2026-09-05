@@ -3,10 +3,10 @@
 //! The WIT contract deliberately contains no provenance-core generic types or
 //! host capabilities. Hosts convert its concrete records into a typed core
 //! transaction and retain authority over validation, publication, persistence,
-//! and query execution.
+//! query execution, and filesystem-backed hook installation.
 
 /// The package identifier of the plugin component contract.
-pub const PACKAGE: &str = "provenance:plugin@0.1.0";
+pub const PACKAGE: &str = "provenance:plugin@0.2.0";
 
 /// The checked-in WIT source used by host and guest bindings.
 pub const WIT_SOURCE: &str = include_str!("../../wit/provenance-plugin.wit");

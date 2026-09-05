@@ -52,14 +52,18 @@ impl Guest for DgPlugin {
     fn manifest() -> guest::PluginManifest {
         guest::PluginManifest {
             id: "dg".into(),
-            abi_version: "0.1.0".into(),
+            abi_version: "0.2.0".into(),
             namespace: NAMESPACE.into(),
             schemas: vec![guest::SchemaKey {
                 namespace: NAMESPACE.into(),
                 version: SCHEMA_VERSION.into(),
             }],
             required_schemas: Vec::new(),
-            capabilities: vec!["emit-observations".into(), "emit-document-events".into()],
+            capabilities: vec![
+                "emit-observations".into(),
+                "emit-document-events".into(),
+                "install-hooks".into(),
+            ],
         }
     }
 
@@ -246,6 +250,50 @@ impl Guest for DgPlugin {
             attributes: Vec::new(),
         })
     }
+
+    fn install(request: guest::InstallRequest) -> Result<guest::InstallPlan, guest::PluginError> {
+        if request.executable.trim().is_empty() {
+            return Err(invalid_request("install executable must not be empty"));
+        }
+        if request.component.trim().is_empty() {
+            return Err(invalid_request("install component must not be empty"));
+        }
+
+        let mut operations = Vec::new();
+        for event in ["create", "update", "delete"] {
+            let mut path = String::from(".dg/hooks/on_");
+            path.push_str(event);
+            operations.push(guest::FileOperation {
+                path,
+                content: hook_script(&request.executable, &request.component),
+                strategy: guest::FileStrategy::Create,
+                executable: true,
+                expected: None,
+            });
+        }
+        Ok(guest::InstallPlan { operations })
+    }
+}
+
+fn hook_script(executable: &str, component: &str) -> String {
+    let mut script = String::from("#!/bin/sh\nset -eu\nexec ");
+    shell_quote(&mut script, executable);
+    script.push_str(" ingest --with-plugin ");
+    shell_quote(&mut script, component);
+    script.push_str(" --plugin-id dg --path \"$PWD\" \"$@\"\n");
+    script
+}
+
+fn shell_quote(output: &mut String, value: &str) {
+    output.push('\'');
+    for character in value.chars() {
+        if character == '\'' {
+            output.push_str("'\\''");
+        } else {
+            output.push(character);
+        }
+    }
+    output.push('\'');
 }
 
 fn schema_definition(schema_key: guest::SchemaKey) -> guest::SchemaDefinition {

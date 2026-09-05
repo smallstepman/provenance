@@ -423,7 +423,7 @@ fn dg_lifecycle_snapshots_enter_generic_provenance_and_replay_idempotently() {
     let (id, event, raw, created) = fixture.hook_record("create");
     assert_eq!(id, "ADR-001");
     assert_eq!(event, "create");
-    assert_eq!(string_field(&created, "path").contains("adr-001"), true);
+    assert!(string_field(&created, "path").contains("adr-001"));
     assert_eq!(created["frontmatter"]["status"], "proposed");
     assert!(string_field(&created, "body").contains("# Record a document decision"));
     ingest(

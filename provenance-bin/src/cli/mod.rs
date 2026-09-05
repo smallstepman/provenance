@@ -30,13 +30,13 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum CliCommand {
-    /// Ingest all currently reachable JJ operations.
+    /// Ingest all currently reachable JJ operations, optionally through a source plugin.
     Ingest(commands::ingest::Command),
     /// Explain why an entity exists.
     Why(commands::why::Command),
-    /// Ingest a source hook observation through a WASM plugin.
-    #[command(name = "ingest-hook", visible_alias = "hook")]
-    IngestHook(commands::ingest_hook::HookOptions),
+    /// Install source lifecycle hooks from a plugin.
+    #[command(subcommand)]
+    Hook(commands::hook::Command),
 }
 
 /// Runs `jj-prov` using the supplied argument, input, and output streams.
@@ -67,11 +67,11 @@ where
     };
 
     match cli.command {
-        CliCommand::Ingest(command) => commands::ingest::execute(&command, &mut output)?,
-        CliCommand::Why(command) => commands::why::execute(&command, &mut output)?,
-        CliCommand::IngestHook(options) => {
-            commands::ingest_hook::execute(options, &mut input, &mut output)?;
+        CliCommand::Ingest(command) => {
+            commands::ingest::execute(&command, &mut input, &mut output)?
         }
+        CliCommand::Why(command) => commands::why::execute(&command, &mut output)?,
+        CliCommand::Hook(command) => commands::hook::execute(&command, &mut output)?,
     }
     Ok(())
 }
@@ -124,27 +124,29 @@ mod tests {
         run(["--help"], io::empty(), &mut output).expect("render help");
         let help = String::from_utf8(output).expect("help is UTF-8");
         assert!(help.contains("Usage: jj-prov <COMMAND>"));
-        assert!(help.contains("ingest-hook"));
+        assert!(help.contains("hook"));
+        assert!(!help.contains("ingest-hook"));
     }
 
     #[test]
-    fn accepts_hook_aliases() {
+    fn parses_ingest_with_plugin_and_source_arguments() {
         let cli = Cli::try_parse_from([
             "jj-prov",
-            "hook",
-            "--component",
+            "ingest",
+            "--with-plugin",
             "plugin.wasm",
-            "--cursor",
-            "update",
-            "--document-id",
-            "ADR-001",
-            "--repo",
-            "repo",
             "ADR-001",
             "update",
         ])
-        .expect("parse hook aliases");
-        assert!(matches!(cli.command, CliCommand::IngestHook(_)));
+        .expect("parse plugin ingestion");
+        assert!(matches!(cli.command, CliCommand::Ingest(_)));
+    }
+
+    #[test]
+    fn parses_hook_install_subcommand() {
+        let cli = Cli::try_parse_from(["jj-prov", "hook", "install", "--plugin", "plugin.wasm"])
+            .expect("parse hook installation");
+        assert!(matches!(cli.command, CliCommand::Hook(_)));
     }
 
     #[test]

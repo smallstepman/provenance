@@ -279,3 +279,29 @@ fn host_rejects_plugin_parent_outside_namespace() {
         } if plugin == "hello-tracker" && actual == "other" && expected == "tracker"
     ));
 }
+
+#[test]
+fn host_rejects_hook_install_without_manifest_capability() {
+    let component = hello_component();
+    let mut manager = PluginManager::new().expect("create manager");
+    manager
+        .register_component(&component)
+        .expect("register hello component");
+
+    let error = manager
+        .install(
+            "hello-tracker",
+            bindings::InstallRequest {
+                executable: "jj-prov".into(),
+                component: "hello.wasm".into(),
+            },
+        )
+        .expect_err("non-installing plugin must be rejected");
+    assert!(matches!(
+        error,
+        provenance_plugin::PluginHostError::MissingCapability {
+            plugin,
+            capability: "install-hooks"
+        } if plugin == "hello-tracker"
+    ));
+}

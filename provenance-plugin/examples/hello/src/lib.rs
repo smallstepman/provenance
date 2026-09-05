@@ -40,7 +40,7 @@ impl Guest for HelloPlugin {
     fn manifest() -> guest::PluginManifest {
         guest::PluginManifest {
             id: "hello-tracker".into(),
-            abi_version: "0.1.0".into(),
+            abi_version: "0.2.0".into(),
             namespace: "tracker".into(),
             schemas: vec![guest::SchemaKey {
                 namespace: "tracker".into(),
@@ -204,6 +204,13 @@ impl Guest for HelloPlugin {
                 }),
             ],
             attributes: Vec::new(),
+        })
+    }
+
+    fn install(_request: guest::InstallRequest) -> Result<guest::InstallPlan, guest::PluginError> {
+        Err(guest::PluginError {
+            kind: guest::PluginErrorKind::Unsupported,
+            message: "this plugin does not install source hooks".into(),
         })
     }
 }

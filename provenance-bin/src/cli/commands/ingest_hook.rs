@@ -7,7 +7,6 @@ use std::{
     process::Command as ProcessCommand,
 };
 
-use clap::Args;
 use provenance_jj::{ingest_plugin_with_causal_parents, ingest_repository, jj_operation};
 use provenance_plugin::{PluginManager, bindings};
 use serde_json::{Map, Value as JsonValue};
@@ -18,45 +17,16 @@ use crate::{
     errors::CliError,
 };
 
-#[derive(Debug, Args, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct HookOptions {
-    /// WASM component to invoke.
-    #[arg(
-        long = "plugin",
-        visible_aliases = ["component", "wasm", "plugin-path"],
-        value_name = "COMPONENT"
-    )]
-    component: Option<PathBuf>,
-    /// Require a particular component manifest ID.
-    #[arg(long = "plugin-id", value_name = "ID")]
-    plugin_id: Option<String>,
-    /// Hook cursor event.
-    #[arg(long = "event", visible_alias = "cursor", value_name = "EVENT")]
-    event: Option<String>,
-    /// Hook entity, document, or issue ID.
-    #[arg(
-        long = "id",
-        visible_aliases = ["entity-id", "document-id", "issue-id"],
-        value_name = "ID"
-    )]
-    entity_id: Option<String>,
-    /// Override the source address ID.
-    #[arg(long = "source-id", value_name = "ID")]
-    source_id: Option<String>,
-    /// Source address kind.
-    #[arg(long = "kind", value_name = "KIND", default_value = "hook")]
-    kind: String,
-    /// JJ workspace path.
-    #[arg(
-        short = 'R',
-        long = "path",
-        visible_alias = "repo",
-        value_name = "PATH"
-    )]
-    path: Option<PathBuf>,
-    /// Arguments supplied by the source hook.
-    #[arg(value_name = "HOOK-ARGS", trailing_var_arg = true)]
-    positionals: Vec<String>,
+    pub(crate) component: Option<PathBuf>,
+    pub(crate) plugin_id: Option<String>,
+    pub(crate) event: Option<String>,
+    pub(crate) entity_id: Option<String>,
+    pub(crate) source_id: Option<String>,
+    pub(crate) kind: String,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) positionals: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -157,7 +127,7 @@ where
     Ok(())
 }
 
-fn resolve_component_path(
+pub(crate) fn resolve_component_path(
     component: &Path,
     invocation_path: &Path,
     workspace_root: &Path,
@@ -230,7 +200,7 @@ fn resolve_hook_options(options: HookOptions) -> Result<ResolvedHookOptions, Cli
             })
         })
         .ok_or_else(|| {
-            CliError::Usage("ingest-hook requires --plugin COMPONENT (or JJ_PROV_PLUGIN)".into())
+            CliError::Usage("ingest --with-plugin requires a component (or JJ_PROV_PLUGIN)".into())
         })?;
 
     Ok(ResolvedHookOptions {
@@ -852,63 +822,8 @@ fn is_hook_event(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
-
-    use crate::cli::{Cli, CliCommand};
 
     use super::*;
-
-    #[test]
-    fn parses_dg_hook_arguments_in_document_first_order() {
-        let args = vec![
-            "jj-prov".to_owned(),
-            "ingest-hook".to_owned(),
-            "--plugin".to_owned(),
-            "dg.wasm".to_owned(),
-            "ADR-001".to_owned(),
-            "update".to_owned(),
-        ];
-        let cli = Cli::try_parse_from(args).expect("parse hook");
-        let options = match cli.command {
-            CliCommand::IngestHook(options) => options,
-            _ => panic!("expected hook command"),
-        };
-        assert_eq!(options.component.as_deref(), Some(Path::new("dg.wasm")));
-        assert_eq!(options.positionals, ["ADR-001", "update"]);
-        let resolved = ResolvedHookOptions {
-            component: options.component.expect("component"),
-            plugin_id: options.plugin_id,
-            event: options.event,
-            entity_id: options.entity_id,
-            source_id: options.source_id,
-            kind: options.kind,
-            path: PathBuf::from("."),
-            positionals: options.positionals,
-        };
-        let payload = serde_json::json!({"id": "ADR-001"});
-        let context = hook_context(&resolved, &payload).expect("hook context");
-        assert_eq!(context.entity_id.as_deref(), Some("ADR-001"));
-        assert_eq!(context.event.as_deref(), Some("update"));
-    }
-
-    #[test]
-    fn preserves_hook_arguments_after_separator() {
-        let cli = Cli::try_parse_from([
-            "jj-prov",
-            "ingest-hook",
-            "--plugin",
-            "plugin.wasm",
-            "--",
-            "--event",
-            "update",
-        ])
-        .expect("parse hook arguments");
-        let options = match cli.command {
-            CliCommand::IngestHook(options) => options,
-            _ => panic!("expected hook command"),
-        };
-        assert_eq!(options.positionals, ["--event", "update"]);
-    }
 
     #[test]
     fn maps_dg_update_payload_to_stable_typed_request() {

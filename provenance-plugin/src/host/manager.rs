@@ -9,7 +9,7 @@ use wasmtime::{
 
 use super::{PluginModel, bindings, conversion};
 
-pub const SUPPORTED_ABI_VERSION: &str = "0.1.0";
+pub const SUPPORTED_ABI_VERSION: &str = "0.2.0";
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct PluginManifest {
@@ -71,6 +71,11 @@ pub enum PluginHostError {
     },
     #[error("plugin `{plugin}` returned source address with empty {field}")]
     InvalidSourceAddress { plugin: String, field: &'static str },
+    #[error("plugin `{plugin}` does not declare capability `{capability}`")]
+    MissingCapability {
+        plugin: String,
+        capability: &'static str,
+    },
 }
 
 impl From<wasmtime::Error> for PluginHostError {
@@ -158,6 +163,45 @@ impl PluginManager {
         request: bindings::ObservationRequest,
     ) -> Result<Transaction<PluginModel>, PluginHostError> {
         self.adapter(plugin_id)?.transaction(request)
+    }
+
+    /// Ask a registered plugin for a host-applied source hook installation plan.
+    ///
+    /// The manager only invokes the component. Filesystem paths and writes
+    /// remain the CLI's responsibility.
+    #[tracing::instrument(level = "debug", skip_all, err)]
+    pub fn install(
+        &self,
+        plugin_id: &str,
+        request: bindings::InstallRequest,
+    ) -> Result<bindings::InstallPlan, PluginHostError> {
+        let plugin = self
+            .plugins
+            .get(plugin_id)
+            .ok_or_else(|| PluginHostError::UnknownPlugin(plugin_id.to_owned()))?;
+        if !plugin
+            .manifest
+            .capabilities
+            .iter()
+            .any(|capability| capability == "install-hooks")
+        {
+            return Err(PluginHostError::MissingCapability {
+                plugin: plugin.manifest.id.clone(),
+                capability: "install-hooks",
+            });
+        }
+        let linker = Linker::new(&self.engine);
+        let mut store = Store::new(&self.engine, ());
+        let instance = bindings::Plugin::instantiate(&mut store, &plugin.component, &linker)
+            .map_err(|error| PluginHostError::Wasmtime(error.to_string()))?;
+        instance
+            .call_install(&mut store, &request)
+            .map_err(|error| PluginHostError::Wasmtime(error.to_string()))?
+            .map_err(|error| PluginHostError::PluginReturned {
+                plugin: plugin.manifest.id.clone(),
+                kind: plugin_error_kind(error.kind),
+                message: error.message,
+            })
     }
 
     pub fn adapter(&self, plugin_id: &str) -> Result<WasmPluginAdapter, PluginHostError> {

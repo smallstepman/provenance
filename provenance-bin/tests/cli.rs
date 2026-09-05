@@ -124,7 +124,7 @@ impl DgFixture {
                  payload=\"$DG_CAPTURE_DIR/$2.json\"\n\
                  result=\"$DG_CAPTURE_DIR/$2.result\"\n\
                  cat > \"$payload\"\n\
-                 \"$JJ_PROV_BIN\" ingest-hook --plugin \"$DG_COMPONENT\" --plugin-id dg --path \"$DG_PROJECT\" \"$@\" < \"$payload\" > \"$result\" 2>&1\n\
+                 \"$JJ_PROV_BIN\" ingest --with-plugin \"$DG_COMPONENT\" --plugin-id dg --path \"$DG_PROJECT\" \"$@\" < \"$payload\" > \"$result\" 2>&1\n\
                 ",
             )
             .expect("write DG hook");
@@ -132,6 +132,29 @@ impl DgFixture {
             permissions.set_mode(0o755);
             fs::set_permissions(&hook, permissions).expect("make DG hook executable");
         }
+    }
+
+    fn install_hooks_with_plugin(&self, component: &Path) {
+        let output = Command::new(env!("CARGO_BIN_EXE_jj-prov"))
+            .args([
+                "hook",
+                "install",
+                "--plugin",
+                component.to_str().expect("component path is UTF-8"),
+                "--plugin-id",
+                "dg",
+                "--path",
+                self.project.to_str().expect("project path is UTF-8"),
+            ])
+            .current_dir(&self.project)
+            .output()
+            .expect("install DG hooks");
+        assert!(
+            output.status.success(),
+            "DG hook installation failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     fn run_dg(&self, args: &[&str]) -> std::process::Output {
@@ -246,8 +269,8 @@ fn hook_ingestion_and_why_use_the_extracted_binary() {
     .to_string();
     let binary = env!("CARGO_BIN_EXE_jj-prov");
     let hook_args = [
-        "ingest-hook",
-        "--plugin",
+        "ingest",
+        "--with-plugin",
         component.to_str().expect("component path is UTF-8"),
         "--plugin-id",
         "hello-tracker",
@@ -317,8 +340,8 @@ fn dg_hook_arguments_are_ingested_by_the_extracted_binary() {
     let mut command = Command::new(env!("CARGO_BIN_EXE_jj-prov"));
     command
         .args([
-            "ingest-hook",
-            "--plugin",
+            "ingest",
+            "--with-plugin",
             component.to_str().expect("component path is UTF-8"),
             "--plugin-id",
             "dg",
@@ -334,6 +357,74 @@ fn dg_hook_arguments_are_ingested_by_the_extracted_binary() {
     let result = run_with_input(&mut command, payload.as_bytes());
     assert!(result.status.success(), "dg hook failed: {result:?}");
     assert!(String::from_utf8_lossy(&result.stdout).contains("ingested dg hook source"));
+}
+
+#[test]
+fn dg_plugin_installs_and_runs_real_document_hooks() {
+    let fixture = DgFixture::new();
+    let component = fixture._root.path().join("dg component.wasm");
+    fs::write(&component, dg_component()).expect("write DG component");
+
+    fixture.install_hooks_with_plugin(&component);
+    let hook_contents = ["create", "update", "delete"]
+        .into_iter()
+        .map(|event| {
+            let path = fixture.project.join(format!(".dg/hooks/on_{event}"));
+            let contents = fs::read_to_string(&path).expect("read installed DG hook");
+            let mode = fs::metadata(&path)
+                .expect("stat installed DG hook")
+                .permissions()
+                .mode();
+            assert_ne!(mode & 0o111, 0, "installed DG hook must be executable");
+            assert!(contents.contains("ingest --with-plugin"));
+            assert!(contents.contains("--plugin-id dg"));
+            (event, contents)
+        })
+        .collect::<Vec<_>>();
+
+    fixture.install_hooks_with_plugin(&component);
+    for (event, contents) in hook_contents {
+        let path = fixture.project.join(format!(".dg/hooks/on_{event}"));
+        assert_eq!(
+            fs::read_to_string(path).expect("reread installed DG hook"),
+            contents
+        );
+    }
+
+    let payload = serde_json::json!({
+        "path": "docs/adr-001.md",
+        "body": "# Installed hook",
+        "frontmatter": {"status": "proposed", "tags": []},
+        "sections": []
+    })
+    .to_string();
+    let hook = fixture.project.join(".dg/hooks/on_create");
+    let mut command = Command::new(&hook);
+    command
+        .args(["ADR-001", "create"])
+        .current_dir(&fixture.project);
+    let result = run_with_input(&mut command, payload.as_bytes());
+    assert!(result.status.success(), "installed hook failed: {result:?}");
+    assert!(String::from_utf8_lossy(&result.stdout).contains("ingested dg hook source"));
+
+    let create = fixture.run_dg(&["new", "adr", "Installed hooks"]);
+    assert!(
+        !String::from_utf8_lossy(&create.stderr).contains("hook exited"),
+        "DG create hook failed: {}",
+        String::from_utf8_lossy(&create.stderr)
+    );
+    let update = fixture.run_dg(&["set", "ADR-001", "status=accepted"]);
+    assert!(
+        !String::from_utf8_lossy(&update.stderr).contains("hook exited"),
+        "DG update hook failed: {}",
+        String::from_utf8_lossy(&update.stderr)
+    );
+    let delete = fixture.run_dg(&["delete", "ADR-001"]);
+    assert!(
+        !String::from_utf8_lossy(&delete.stderr).contains("hook exited"),
+        "DG delete hook failed: {}",
+        String::from_utf8_lossy(&delete.stderr)
+    );
 }
 
 #[test]
@@ -375,8 +466,8 @@ fn exact_dg_hooks_dispatch_through_jj_prov_and_replay_idempotently() {
     let mut replay = Command::new(env!("CARGO_BIN_EXE_jj-prov"));
     replay
         .args([
-            "ingest-hook",
-            "--plugin",
+            "ingest",
+            "--with-plugin",
             component.to_str().expect("component path is UTF-8"),
             "--plugin-id",
             "dg",
@@ -443,8 +534,8 @@ fn beads_hook_payload_is_ingested_by_the_extracted_binary() {
     let mut command = Command::new(env!("CARGO_BIN_EXE_jj-prov"));
     command
         .args([
-            "ingest-hook",
-            "--plugin",
+            "ingest",
+            "--with-plugin",
             component.to_str().expect("component path is UTF-8"),
             "--plugin-id",
             "beads",
